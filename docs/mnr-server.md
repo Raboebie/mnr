@@ -93,7 +93,9 @@ Results:
 |---|---|---|---|
 | `dev.rablab.co.za` (+ `www.dev`) | ✅ Deployed | 2026-07-23 | LE E8 (was Sectigo — moved to LE) |
 | `timing.mondaynightracing.co.za` | ✅ Deployed | 2026-07-23 | LE E8 |
-| `mondaynightracing.co.za` + `*.mondaynightracing.co.za` | ⚠️ Not yet renewed | was 2026-04-22 | LE E7 (expired) |
+| `mondaynightracing.co.za` + `*.mondaynightracing.co.za` | ✅ Deployed (after CF DNS migration) | 2026-07-23 | LE E7 |
+
+The wildcard was the holdout — manual-mode DNS-01 kept failing against Afrihost because their authoritative NS IPs were serving inconsistent zone content. Resolved by migrating the zone to Cloudflare and re-issuing with the `dns_cf` plugin (fully automated). Full story in `dns-cloudflare-migration.md`.
 
 ### Afrihost DNS gotcha → DNS migration to Cloudflare
 

@@ -40,8 +40,9 @@ Once connected, `ansible windows -m win_ping` from `ansible/` should return `pon
 - Source of truth for cert paths: `sites[*]` in `vars.yml`. That list matches what the live vhosts in `C:\Apache24\conf\extra\httpd-vhosts.conf` reference.
 - Renewal is **out-of-band via `acme.sh`** on a workstation, then PEMs get copied up with WinRM. The server's own Certbot install (v1.13.0, 2021) is dead — ignore it.
 - DNS hosts are split:
-  - `rablab.co.za` → still Afrihost DNS. Manual DNS-01 mode. Afrihost's 14400s TTL means LE's validator cache can persist up to 4h after a failed attempt.
-  - `mondaynightracing.co.za` → being migrated to Cloudflare. See `docs/dns-cloudflare-migration.md`. Once active, use acme.sh `dns_cf` plugin with the token in `vault_cloudflare_api_token` for fully unattended renewals.
+  - `rablab.co.za` → still on Afrihost DNS. Manual DNS-01 mode. Afrihost's 14400s TTL means LE's validator cache can persist up to 4h after a failed attempt.
+  - `mondaynightracing.co.za` → on Cloudflare (migrated 2026-04-24). Renew with `acme.sh --renew --dns dns_cf -d mondaynightracing.co.za -d '*.mondaynightracing.co.za'`. Token is in `vault_cloudflare_api_token` and already persisted in `~/.acme.sh/account.conf` after the first issue. Takes ~10 seconds, fully unattended. See `docs/dns-cloudflare-migration.md`.
+- **Cron and a WinRM deploy hook are not yet wired up** — cert renewal and deploy to `mnr-race` is still a manual two-step. Next milestone is `scripts/deploy-cert-to-mnr-race.py` driven by acme.sh `--deploy-hook`, plus `acme.sh --install-cronjob`.
 - LE remembers apex validations per-account for 30 days, so wildcard re-issues only need the wildcard TXT after the first successful apex validation.
 - Full context (and the 2026-04-24 renewal round) is in `docs/mnr-server.md`.
 

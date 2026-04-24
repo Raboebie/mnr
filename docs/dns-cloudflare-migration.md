@@ -10,19 +10,19 @@ Started 2026-04-24 after a week of Afrihost's authoritative NS servers returning
 
 `rablab.co.za` stays on its current DNS for now (cert is renewed through 2026-07-23, not urgent). If it hits the same Afrihost problem later, migrate it the same way.
 
-## Current state (2026-04-24)
+## Current state (2026-04-24 — migration complete)
 
 | | |
 |---|---|
-| CF zone status | Pending nameserver update |
+| CF zone status | **Active** |
 | CF zone ID | `4ee0f0f1834407a3c90ac3f8de9b7e36` |
 | CF account ID | `8daa5d05c975df852dc7cb6ed15076ad` |
-| Assigned NS | `johnny.ns.cloudflare.com`, `miki.ns.cloudflare.com` |
-| Records imported | 20 (A×11, CNAME×2, MX×1, TXT×3, SRV×3) |
-| Proxy status | All records grey (DNS only) — **do not enable proxy** until we have a reason |
-| NS cutover | 1 of 4 Afrihost NS slots changed to `johnny.ns.cloudflare.com`; remaining 3 locked behind Afrihost's 4-hour change window |
+| Delegated NS | `johnny.ns.cloudflare.com`, `miki.ns.cloudflare.com` |
+| Records live | 20 (A×11, CNAME×2, MX×1, TXT×3, SRV×3) |
+| Proxy status | All records grey (DNS only) — **do not enable proxy** without a deliberate reason |
+| Wildcard cert | renewed via `dns_cf` the same day; valid through 2026-07-23 |
 
-CF is already serving correct answers on `johnny.ns.cloudflare.com`. Because all 20 records match what Afrihost's nameservers return, the mixed delegation isn't causing user-visible breakage. DNS answers returned from CF match origin IPs exactly.
+Recursive resolvers (`1.1.1.1`, `8.8.8.8`, `9.9.9.9`) see only the CF NS pair. Old Afrihost NS servers still serve stale zone data if queried directly, but nothing follows them any more because the parent delegation has flipped.
 
 ## Gotchas encountered
 
@@ -44,35 +44,26 @@ done
 
 Any DIFF output is a problem to fix before the NS cutover completes.
 
-## Completing the cutover
+## How the cutover went
 
-1. Once Afrihost support or the 4-hour lock allows, change the remaining 3 NS slots:
-   - Replace `ns.dns2.co.za`, `ns.otherdns.com`, `ns.otherdns.net` with `miki.ns.cloudflare.com` (and duplicates of `johnny.ns.cloudflare.com` / `miki.ns.cloudflare.com` if Afrihost insists on 4 distinct slots — DNS tolerates duplicates).
-2. Cloudflare polls and flips the zone to **Active** — expect an email notification within 5–60 min of propagation.
-3. Once active, the NS records inside CF's own zone become authoritative (they'll be `johnny.ns.cloudflare.com` and `miki.ns.cloudflare.com` — CF manages this).
+1. Changed one Afrihost NS slot → hit the 4-hour lock before the other three could be updated. Afrihost support removed the lock on request.
+2. Swapped the remaining 3 NS — Afrihost's UI required 4 entries, so the CF pair was duplicated. DNS tolerated that fine.
+3. Cloudflare detected the delegation flip and marked the zone **Active** within minutes.
+4. Ran `acme.sh --issue --dns dns_cf` with the scoped token — wildcard cert issued in ~10 seconds (TXT added via CF API, LE validated, TXT removed). Deployed to `C:\certs\mondaynightracing.co.za\*` via WinRM and `Restart-Service Apache2.4`.
 
-## After the zone is Active: automate renewals
+## Automated renewals
 
-Switch acme.sh from manual DNS mode to the `dns_cf` plugin. The API token is already in the vault (`vault_cloudflare_api_token`, scoped `Zone.DNS:Edit + Zone.Zone:Read` on `mondaynightracing.co.za` only).
-
-Rough procedure (once token is exported to the environment):
+acme.sh's `dns_cf` plugin reads `CF_Token` from the environment (or from `~/.acme.sh/account.conf` once persisted). Renewal is a one-liner:
 
 ```bash
-export CF_Token="$(ansible-vault view ansible/group_vars/all/vault.yml | awk '/^vault_cloudflare_api_token:/{print $2}')"
-~/.acme.sh/acme.sh --issue --dns dns_cf \
-  -d mondaynightracing.co.za -d '*.mondaynightracing.co.za' \
-  --force
+export CF_Token="$(cd /home/dihan/git/mnr/mnr/ansible && ansible-vault view group_vars/all/vault.yml | awk '/^vault_cloudflare_api_token:/{print $2}')"
+~/.acme.sh/acme.sh --renew --dns dns_cf \
+  -d mondaynightracing.co.za -d '*.mondaynightracing.co.za'
 ```
 
-acme.sh will add the TXT, wait for propagation, validate, clean up — all unattended. Wire the renewal into cron once it's proven out.
+After the first successful `--issue`, acme.sh persists `CF_Token` into `~/.acme.sh/account.conf`, so subsequent `--renew` calls don't need the env export. If you rotate the token, re-export and re-issue once to overwrite.
 
-## Registering the token for acme.sh
+### Not yet wired up
 
-acme.sh's `dns_cf` plugin needs `CF_Token` (and optionally `CF_Account_ID`) set in its environment or saved into `~/.acme.sh/account.conf`. One-time setup:
-
-```bash
-~/.acme.sh/acme.sh --set-default-ca --server letsencrypt
-# The --issue command with CF_Token in env will persist it into account.conf
-```
-
-Do this on the workstation that runs renewals (same machine where the vault lives). Don't copy the plaintext token into a shell-rc file — export it inline from the vault each session or have a wrapper script.
+- **Cron** for acme.sh. LE certs expire in 90 days; default acme.sh cron runs daily and only actually renews when <30 days left. `acme.sh --install-cronjob` installs it. Skipped for now — we wanted to prove the flow end-to-end first.
+- **Deploy hook** that copies the new PEMs up to mnr-race automatically after renewal. Today's deploy was a one-off `python3 /tmp/deploy_mnr.py` run. Reasonable next step: extract that to `scripts/deploy-cert-to-mnr-race.py` (reading paths from `vars.yml`) and register it as `--deploy-hook` on each managed cert.
