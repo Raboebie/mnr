@@ -30,7 +30,7 @@ Also required:
 
 ### Network reach
 
-VPN: OpenVPN config in `~/Downloads/ovpn/config/JH1-ISP-NSX-T_VPN_PFSESE-TCP4-1194-config.ovpn`. The exe installer at `~/Downloads/ovpn/openvpn-JH1-ISP-NSX-T_VPN_PFSESE-TCP4-1194-install-2.6.5-I001-amd64.exe` is a 7z archive — `7z x` extracts `config/*.ovpn` and the CA cert. The CA is inlined in our local copy under `<ca>...</ca>`. VPN endpoint: `41.76.226.14:1194 tcp4`, auth-user-pass.
+VPN: OpenVPN config committed at `vpn/mnr-jh1.ovpn` (CA already inlined under `<ca>...</ca>`). VPN endpoint: `41.76.226.14:1194 tcp4`, auth-user-pass — creds in the vault as `vault_vpn_username` / `vault_vpn_password`. Original Windows installer was `~/Downloads/ovpn/openvpn-JH1-ISP-NSX-T_VPN_PFSESE-TCP4-1194-install-2.6.5-I001-amd64.exe`, a 7z archive — `7z x` extracts the config and CA cert if you ever need to rebuild.
 
 ## Apache
 

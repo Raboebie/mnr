@@ -6,12 +6,15 @@
 mnr_race_winrm_user: "{{ vault_mnr_race_winrm_user }}"
 mnr_race_winrm_password: "{{ vault_mnr_race_winrm_password }}"
 
-# VPN used to reach the 10.104.0.0/16 network
+# JH1 OpenVPN used to reach the 10.104.0.0/16 network.
+# ovpn_config path is relative to the repo root.
 vpn:
-  ovpn_config: /home/dihan/Downloads/ovpn/config/JH1-ISP-NSX-T_VPN_PFSESE-TCP4-1194-config.ovpn
+  ovpn_config: vpn/mnr-jh1.ovpn
   server: 41.76.226.14
   port: 1194
   proto: tcp4
+  username: "{{ vault_vpn_username }}"
+  password: "{{ vault_vpn_password }}"
 
 # Let's Encrypt / ACME
 acme:
