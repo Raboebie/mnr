@@ -63,7 +63,6 @@ export CF_Token="$(cd /home/dihan/git/mnr/mnr/ansible && ansible-vault view grou
 
 After the first successful `--issue`, acme.sh persists `CF_Token` into `~/.acme.sh/account.conf`, so subsequent `--renew` calls don't need the env export. If you rotate the token, re-export and re-issue once to overwrite.
 
-### Not yet wired up
+### Server-side automation now owns MNR renewals
 
-- **Cron** for acme.sh. LE certs expire in 90 days; default acme.sh cron runs daily and only actually renews when <30 days left. `acme.sh --install-cronjob` installs it. Skipped for now — we wanted to prove the flow end-to-end first.
-- **Deploy hook** that copies the new PEMs up to mnr-race automatically after renewal. Today's deploy was a one-off `python3 /tmp/deploy_mnr.py` run. Reasonable next step: extract that to `scripts/deploy-cert-to-mnr-race.py` (reading paths from `vars.yml`) and register it as `--deploy-hook` on each managed cert.
+The workstation-side acme.sh flow proved the end-to-end path on 2026-04-24. Same day, we moved renewal responsibility to the server itself using **Posh-ACME** — see `mnr-server.md` for the full writeup. The canonical scripts are in `scripts/posh-acme-*.ps1`. `dev.rablab.co.za` stays on the workstation-based flow until its DNS also moves to Cloudflare.

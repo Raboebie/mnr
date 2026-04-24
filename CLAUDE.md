@@ -19,6 +19,9 @@ docs/
   website-c-website.md           dev.rablab.co.za DocumentRoot inventory
   website-c-mnr_website.md       mondaynightracing.co.za DocumentRoot inventory
   dns-cloudflare-migration.md    mnr.co.za DNS migration state and procedure
+scripts/
+  posh-acme-setup.ps1            one-time cert issuance + deploy (run as SYSTEM, takes -CFToken)
+  posh-acme-renew.ps1            daily renewal on server (deployed at C:\certs\_acme\renew.ps1)
 vpn/
   mnr-jh1.ovpn     OpenVPN config (CA inlined) for the JH1 tunnel
 ```
@@ -40,9 +43,18 @@ Once connected, `ansible windows -m win_ping` from `ansible/` should return `pon
 - Source of truth for cert paths: `sites[*]` in `vars.yml`. That list matches what the live vhosts in `C:\Apache24\conf\extra\httpd-vhosts.conf` reference.
 - Renewal is **out-of-band via `acme.sh`** on a workstation, then PEMs get copied up with WinRM. The server's own Certbot install (v1.13.0, 2021) is dead — ignore it.
 - DNS hosts are split:
-  - `rablab.co.za` → still on Afrihost DNS. Manual DNS-01 mode. Afrihost's 14400s TTL means LE's validator cache can persist up to 4h after a failed attempt.
-  - `mondaynightracing.co.za` → on Cloudflare (migrated 2026-04-24). Renew with `acme.sh --renew --dns dns_cf -d mondaynightracing.co.za -d '*.mondaynightracing.co.za'`. Token is in `vault_cloudflare_api_token` and already persisted in `~/.acme.sh/account.conf` after the first issue. Takes ~10 seconds, fully unattended. See `docs/dns-cloudflare-migration.md`.
-- **Cron and a WinRM deploy hook are not yet wired up** — cert renewal and deploy to `mnr-race` is still a manual two-step. Next milestone is `scripts/deploy-cert-to-mnr-race.py` driven by acme.sh `--deploy-hook`, plus `acme.sh --install-cronjob`.
+  - `rablab.co.za` → still on Afrihost DNS. Manual DNS-01 mode from a workstation (`~/.acme.sh/`). Afrihost's 14400s TTL means LE's validator cache can persist up to 4h after a failed attempt.
+  - `mondaynightracing.co.za` → on Cloudflare (migrated 2026-04-24). Renewal is **fully automated on the server itself** via Posh-ACME — see below.
+
+### Server-side automated renewal (mnr-race)
+
+Set up 2026-04-24 using Posh-ACME v4.32.0 (installed from the PowerShell Gallery `.nupkg` directly, bypassing the broken NuGet provider bootstrap). State lives at `C:\certs\_acme\config` (POSHACME_HOME set machine-wide). The Cloudflare API token is stored DPAPI-encrypted inside that state, bound to SYSTEM.
+
+Two certs are tracked: `mondaynightracing.co.za + *.mondaynightracing.co.za` and `timing.mondaynightracing.co.za`. A daily scheduled task `AcmeRenew` runs `C:\certs\_acme\renew.ps1` at 03:15 as SYSTEM. The script calls `Submit-Renewal`, which respects LE's 30-day window — on most days it's a no-op. When a cert does renew, the script copies the new fullchain+key into the paths `httpd-vhosts.conf` references and restarts `Apache2.4`. Log at `C:\certs\_acme\renew.log`.
+
+Canonical copies of the setup and renewal scripts are in `scripts/posh-acme-*.ps1`. If the server state is ever lost (reimage, disk failure), re-run the setup script as SYSTEM with `-CFToken` from the vault, re-register the daily task, and you're back.
+
+`dev.rablab.co.za` is **not** covered by this — its DNS is still on Afrihost, so it's still renewed manually from a workstation. Revisit once rablab moves to Cloudflare too.
 - LE remembers apex validations per-account for 30 days, so wildcard re-issues only need the wildcard TXT after the first successful apex validation.
 - Full context (and the 2026-04-24 renewal round) is in `docs/mnr-server.md`.
 

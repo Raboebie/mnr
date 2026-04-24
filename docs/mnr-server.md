@@ -74,7 +74,24 @@ HSTS: max-age=63072000; includeSubDomains; preload
 
 ## Certificates
 
-Certbot 1.13.0 (stale, 2021) is installed at `C:\Program Files (x86)\Certbot\bin\certbot.exe` but its `live/` dir contains zero-byte files — the automated renewal is broken. We renew out-of-band from a trusted workstation using `acme.sh` in DNS-01 manual mode, then copy the PEM files to the server over WinRM.
+Certbot 1.13.0 (stale, 2021) is installed at `C:\Program Files (x86)\Certbot\bin\certbot.exe` but its `live/` dir contains zero-byte files — broken and ignored. The live automation path is **Posh-ACME on the server** for the two MNR certs (mondaynightracing.co.za wildcard + timing), driven by a daily SYSTEM scheduled task. `dev.rablab.co.za` still renews from a workstation because its DNS is still on Afrihost.
+
+### Posh-ACME on-server automation
+
+Installed 2026-04-24. Key facts:
+
+- Version 4.32.0, pulled as a `.nupkg` directly from PowerShell Gallery and extracted into `C:\Program Files\WindowsPowerShell\Modules\Posh-ACME\4.32.0` (the usual `Install-Module` route hung on a NuGet-provider bootstrap that tried to download from `oneget.org` and failed TLS trust).
+- State at `C:\certs\_acme\config` (POSHACME_HOME set at Machine scope). Encrypted plugin args bound to SYSTEM, so setup and daily renewal both run as SYSTEM.
+- Account: LE production, contact `mailto:dihank777@gmail.com`, account id `3272068881`.
+- Plugin: `Cloudflare` with the scoped `vault_cloudflare_api_token` (from the vault).
+- Two orders tracked:
+  - `mondaynightracing.co.za` + `*.mondaynightracing.co.za`
+  - `timing.mondaynightracing.co.za`
+- Scheduled Task `AcmeRenew`, `03:15` daily, `SYSTEM`, `HIGHEST` privilege. Runs `C:\certs\_acme\renew.ps1`.
+- `renew.ps1` calls `Submit-Renewal` (respects the 30-day window), and for any cert it gets back: copies `FullChainFile` + `KeyFile` over the deployed paths that httpd-vhosts.conf references, then `Restart-Service Apache2.4`. Logs to `C:\certs\_acme\renew.log` with ISO timestamps.
+- Canonical scripts committed at `scripts/posh-acme-setup.ps1` (one-off, takes `-CFToken`) and `scripts/posh-acme-renew.ps1`.
+
+**Recovery from lost state** (reimage, disk failure): upload `posh-acme-setup.ps1` to `C:\Windows\Temp`, create a one-shot scheduled task running it as SYSTEM with `-CFToken <vault value>`, run it, watch the log. Then re-register the `AcmeRenew` daily task. Whole recovery takes ~10 min.
 
 ### 2026-04-24 renewal round
 
