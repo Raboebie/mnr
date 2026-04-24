@@ -1,0 +1,39 @@
+; BIND zone file for mondaynightracing.co.za
+; Exported from Afrihost 2026-04-24, cleaned for Cloudflare import:
+;   - removed SOA and NS records (Cloudflare auto-generates)
+;   - fixed SRV priority field (Afrihost omits it; proper order is priority weight port target)
+;   - de-duplicated apex A records
+;   - dropped the one-off _acme-challenge TXT (acme.sh will re-create it)
+
+$TTL 14401
+$ORIGIN mondaynightracing.co.za.
+
+; === Apex ===
+@                 14401  IN  A      154.73.188.222
+@                 14401  IN  MX     10 mail.mondaynightracing.co.za.
+@                 14401  IN  TXT    "v=spf1 include:spf.aserv.co.za +a +mx -all"
+@                 14401  IN  TXT    "mailconf=https://envoy.aserv.co.za/mail/config-v1.1.xml"
+
+; === Web subdomains (→ the Windows mnr-race server) ===
+*                 14401  IN  A      154.73.188.222
+www               14401  IN  A      154.73.188.222
+timing            28800  IN  A      154.73.188.222
+files             28800  IN  A      154.73.188.222
+acc               28800  IN  A      154.73.188.222
+ams2              28800  IN  A      154.73.188.222
+
+; === Mail / cPanel (→ Afrihost shared host) ===
+mail              14401  IN  A      102.222.124.102
+webmail           14401  IN  A      102.222.124.102
+cpanel            14401  IN  A      102.222.124.102
+ftp               14401  IN  A      102.222.124.102
+autoconfig        14401  IN  CNAME  envoy.aserv.co.za.
+autodiscover     14401  IN  CNAME  envoy.aserv.co.za.
+
+; === Mail service SRV records (priority weight port target) ===
+_imaps._tcp          14401  IN  SRV  0 1 993 envoy.aserv.co.za.
+_autodiscover._tcp   14401  IN  SRV  0 0 443 envoy.aserv.co.za.
+_submission._tcp     14401  IN  SRV  0 1  25 envoy.aserv.co.za.
+
+; === DMARC ===
+_dmarc            14401  IN  TXT    "v=DMARC1; p=none; fo=0; adkim=s; aspf=s"
