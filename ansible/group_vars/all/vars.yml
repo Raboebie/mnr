@@ -22,6 +22,14 @@ acme:
   client: acme.sh
   client_home: "{{ ansible_env.HOME | default('/home/dihan') }}/.acme.sh"
 
+# Cloudflare (DNS host for mondaynightracing.co.za)
+cloudflare:
+  account_id: 8daa5d05c975df852dc7cb6ed15076ad
+  api_token: "{{ vault_cloudflare_api_token }}"
+  zones:
+    mondaynightracing.co.za:
+      id: 4ee0f0f1834407a3c90ac3f8de9b7e36
+
 # Apache on mnr-race
 apache:
   service_name: Apache2.4
