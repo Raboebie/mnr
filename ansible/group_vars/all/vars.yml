@@ -1,0 +1,45 @@
+---
+# Non-secret variables for all hosts.
+# Secrets live in vault.yml (ansible-vault encrypted).
+# Sensitive values here only reference {{ vault_* }} vars defined there.
+
+mnr_race_winrm_user: "{{ vault_mnr_race_winrm_user }}"
+mnr_race_winrm_password: "{{ vault_mnr_race_winrm_password }}"
+
+# VPN used to reach the 10.104.0.0/16 network
+vpn:
+  ovpn_config: /home/dihan/Downloads/ovpn/config/JH1-ISP-NSX-T_VPN_PFSESE-TCP4-1194-config.ovpn
+  server: 41.76.226.14
+  port: 1194
+  proto: tcp4
+
+# Let's Encrypt / ACME
+acme:
+  account_email: dihank777@gmail.com
+  client: acme.sh
+  client_home: "{{ ansible_env.HOME | default('/home/dihan') }}/.acme.sh"
+
+# Apache on mnr-race
+apache:
+  service_name: Apache2.4
+  conf_root: 'C:\Apache24\conf'
+  vhosts_conf: 'C:\Apache24\conf\extra\httpd-vhosts.conf'
+  bin: 'C:\Apache24\bin\httpd.exe'
+  openssl: 'C:\Apache24\bin\openssl.exe'
+
+# Sites served and the cert files they reference
+sites:
+  - name: dev.rablab.co.za
+    sans: [dev.rablab.co.za, www.dev.rablab.co.za]
+    cert: 'C:\Certbot\live\dev.rablab.co.za\dev_rablab_co_za.crt'
+    key: 'C:\Certbot\live\dev.rablab.co.za\dev.rablab.co.za_key.txt'
+    chain: 'C:\Certbot\live\dev.rablab.co.za\dev_rablab_co_za.ca-bundle'
+  - name: timing.mondaynightracing.co.za
+    sans: [timing.mondaynightracing.co.za]
+    cert: 'C:\certs\timing.mondaynightracing.co.za\certificate.cer'
+    key: 'C:\certs\timing.mondaynightracing.co.za\private.key'
+  - name: mondaynightracing.co.za
+    sans: [mondaynightracing.co.za, '*.mondaynightracing.co.za']
+    cert: 'C:\certs\mondaynightracing.co.za\fullchain.pem'
+    key: 'C:\certs\mondaynightracing.co.za\privkey.pem'
+    shared_with: [acc.mondaynightracing.co.za, ams2.mondaynightracing.co.za]

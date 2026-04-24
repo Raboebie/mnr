@@ -1,0 +1,110 @@
+# mnr-race server
+
+Windows host that serves the Monday Night Racing web properties plus `dev.rablab.co.za`. Reached over the JH1 OpenVPN tunnel.
+
+## Host facts
+
+| | |
+|---|---|
+| Hostname | `mnr-race` |
+| OS | Windows 10 Pro |
+| Workgroup | `WORKGROUP` (not domain-joined) |
+| LAN IP | `10.104.0.10` |
+| WinRM | `http://10.104.0.10:5985/wsman`, NTLM, local user `mnr` |
+
+`mnr` is in **Administrators** and `docker-users`. `Password required: No` flag is set on the account (password exists but is not required by policy). `Password last set: 2021/02/26`.
+
+### WinRM remote-auth fix
+
+Local-admin accounts on workgroup machines get a filtered token over the network. Without the registry override below, WinRM rejects valid credentials with `InvalidCredentialsError`.
+
+```powershell
+New-ItemProperty `
+  -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" `
+  -Name "LocalAccountTokenFilterPolicy" -Value 1 -PropertyType DWORD -Force
+```
+
+Also required:
+- All NIC profiles set to Private (not Public) — otherwise WinRM firewall exception refuses to activate.
+- `Set-Item WSMan:\localhost\Service\AllowUnencrypted $true` for HTTP NTLM.
+
+### Network reach
+
+VPN: OpenVPN config in `~/Downloads/ovpn/config/JH1-ISP-NSX-T_VPN_PFSESE-TCP4-1194-config.ovpn`. The exe installer at `~/Downloads/ovpn/openvpn-JH1-ISP-NSX-T_VPN_PFSESE-TCP4-1194-install-2.6.5-I001-amd64.exe` is a 7z archive — `7z x` extracts `config/*.ovpn` and the CA cert. The CA is inlined in our local copy under `<ca>...</ca>`. VPN endpoint: `41.76.226.14:1194 tcp4`, auth-user-pass.
+
+## Apache
+
+Apache Haus 2.4 installed at `C:\Apache24`. Service `Apache2.4`, running. Listens on 80 and 443 (plus 8773 which is a separate app, not Apache).
+
+### Active config
+
+`httpd.conf` includes:
+- `conf/extra/httpd-vhosts.conf` — all live vhosts
+- `conf/extra/httpd-ssl.conf` — present but **empty** (0 bytes)
+
+The SSL globals (protocols, ciphers, `SSLSessionCache`, etc.) live in `conf/extra/httpd-ahssl.conf`, which is **not** currently included — per-vhost `SSLProtocol`/`SSLCipherSuite` lines handle that inline instead.
+
+### Orphaned / unused configs
+
+| File | Status |
+|---|---|
+| `C:\Apache24\conf\api.conf` | vhost for `api.buzzworx.co:8443`, not included by `httpd.conf`. Cert files in `C:\Certbot\live\api.buzzworx.co\*` are all 0 bytes (broken Certbot state from 2021). |
+| `C:\Apache24\conf\extra\httpd-mnr.conf` | duplicate `timing.mondaynightracing.co.za` vhost, not included. Safe to leave. |
+| `C:\Certbot\csr\*` and `C:\Certbot\keys\*` | ~120 files from an old Certbot auto-renew loop that ran many times daily in 2021. Not touched since. Can be archived. |
+
+### Vhosts (live)
+
+All in `conf/extra/httpd-vhosts.conf`:
+
+| ServerName | Port | Backend | DocumentRoot | Cert path |
+|---|---|---|---|---|
+| `dev.rablab.co.za` | 80 → 443 redirect | — | `C:/website` | `C:\Certbot\live\dev.rablab.co.za\dev_rablab_co_za.crt` + `_key.txt` + `.ca-bundle` |
+| `timing.mondaynightracing.co.za` | 443 | proxy `http://10.104.0.10:8773/` + WS upgrade | `C:/website` | `C:\certs\timing.mondaynightracing.co.za\certificate.cer` + `private.key` |
+| `mondaynightracing.co.za` | 443 | static PHP/HTML, SPA fallback to `/index.html` | `C:/mnr_website` | `C:\certs\mondaynightracing.co.za\fullchain.pem` + `privkey.pem` |
+| `acc.mondaynightracing.co.za` | 443 | proxy `http://10.104.0.10:8773/` + WS upgrade | — | same as apex (wildcard SAN) |
+| `ams2.mondaynightracing.co.za` | 443 | proxy `http://10.104.0.10:8774/` + WS upgrade | — | same as apex (wildcard SAN) |
+
+All SSL vhosts use:
+```
+SSLProtocol -all +TLSv1.2 +TLSv1.3
+SSLCipherSuite HIGH:!aNULL:!MD5:!RC4
+SSLHonorCipherOrder on
+HSTS: max-age=63072000; includeSubDomains; preload
+```
+
+## Certificates
+
+Certbot 1.13.0 (stale, 2021) is installed at `C:\Program Files (x86)\Certbot\bin\certbot.exe` but its `live/` dir contains zero-byte files — the automated renewal is broken. We renew out-of-band from a trusted workstation using `acme.sh` in DNS-01 manual mode, then copy the PEM files to the server over WinRM.
+
+### 2026-04-24 renewal round
+
+All three deployed certs were expired. Process:
+
+1. `acme.sh --issue --dns` with manual mode → printed TXT challenges.
+2. Added TXT records at `_acme-challenge.<name>` in the Afrihost DNS panel.
+3. `acme.sh --renew --dns` once TXT was consistent across all four authoritative NS.
+4. Uploaded fullchain + key via WinRM into the same paths the vhosts already referenced (chunked base64 — pywinrm caps a single `run_ps` script at ~3000 chars).
+5. `httpd.exe -t` to verify, `Restart-Service Apache2.4`.
+6. Pre-deploy copies saved alongside originals as `*.bak-<timestamp>`.
+
+Results:
+
+| Cert | Status | New expiry | Issuer |
+|---|---|---|---|
+| `dev.rablab.co.za` (+ `www.dev`) | ✅ Deployed | 2026-07-23 | LE E8 (was Sectigo — moved to LE) |
+| `timing.mondaynightracing.co.za` | ✅ Deployed | 2026-07-23 | LE E8 |
+| `mondaynightracing.co.za` + `*.mondaynightracing.co.za` | ⚠️ Not yet renewed | was 2026-04-22 | LE E7 (expired) |
+
+### Afrihost DNS gotcha
+
+`mondaynightracing.co.za` is on Afrihost NS: `ns.dns1.co.za`, `ns.dns2.co.za`, `ns.otherdns.net`, `ns.otherdns.com`. When polling authoritative via name (`dig @ns.dns1.co.za.`), cached data can surface — querying by **IP** (`dig @13.245.235.13`) bypasses that and shows the true zone content.
+
+Wildcard renewal kept failing with `Incorrect TXT record` even after TXT was consistent across all four NS — LE validator caches TXT for the record's TTL (Afrihost default TTL is 14400 s = 4 h). After a failed validation, you must either wait for that TTL or accept repeated failures until the cache expires. Plan: retry after ~14:08 SAST 2026-04-24 (4 h after the first failed attempt).
+
+Apex (`mondaynightracing.co.za`) validation is cached as "already validated" on the LE account for 30 days, so re-issues only require the **wildcard** TXT on subsequent attempts.
+
+## Ansible control
+
+See `../ansible/`. `ansible windows -m win_ping` should return `pong`. Vars reference:
+- `mnr_race_winrm_user` / `mnr_race_winrm_password` — from the encrypted vault.
+- `sites[*]` — the cert/key paths above, for writing renewal playbooks against.

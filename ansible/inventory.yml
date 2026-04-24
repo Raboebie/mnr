@@ -1,0 +1,13 @@
+all:
+  children:
+    windows:
+      hosts:
+        mnr-race:
+          ansible_host: 10.104.0.10
+          ansible_port: 5985
+          ansible_connection: winrm
+          ansible_winrm_transport: ntlm
+          ansible_winrm_scheme: http
+          ansible_winrm_server_cert_validation: ignore
+          ansible_user: "{{ mnr_race_winrm_user }}"
+          ansible_password: "{{ mnr_race_winrm_password }}"
