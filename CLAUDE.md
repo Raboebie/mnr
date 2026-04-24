@@ -9,11 +9,18 @@ ansible/           Ansible control root (run commands from here)
   ansible.cfg
   inventory.yml
   group_vars/all/
-    vars.yml       public vars (server paths, site list, VPN info)
-    vault.yml      ansible-vault encrypted secrets (winrm creds, etc.)
+    vars.yml       public vars (server paths, site list, VPN info, CF zone/account IDs)
+    vault.yml      ansible-vault encrypted secrets (winrm, VPN, CF API token)
   .vault_password  random password for the vault (gitignored)
+dns/
+  mondaynightracing.co.za.zone   cleaned BIND export for the CF import
 docs/
-  mnr-server.md    findings: host, Apache vhost map, certs, gotchas
+  mnr-server.md                  host, Apache vhost map, certs, gotchas
+  website-c-website.md           dev.rablab.co.za DocumentRoot inventory
+  website-c-mnr_website.md       mondaynightracing.co.za DocumentRoot inventory
+  dns-cloudflare-migration.md    mnr.co.za DNS migration state and procedure
+vpn/
+  mnr-jh1.ovpn     OpenVPN config (CA inlined) for the JH1 tunnel
 ```
 
 ## Working with the vault
@@ -31,10 +38,12 @@ Once connected, `ansible windows -m win_ping` from `ansible/` should return `pon
 ## Certificate renewal
 
 - Source of truth for cert paths: `sites[*]` in `vars.yml`. That list matches what the live vhosts in `C:\Apache24\conf\extra\httpd-vhosts.conf` reference.
-- Renewal flow is **out-of-band via `acme.sh` in DNS-01 manual mode** on a workstation, then copy the PEMs up. The server's own Certbot install (v1.13.0, 2021) is dead — ignore it.
-- For wildcard (`*.mondaynightracing.co.za`) DNS-01 is mandatory. Afrihost hosts the zone; TXT records go under `_acme-challenge`.
-- LE validator caches TXT for the record TTL. Afrihost's default is 14400s (4h) — if a renewal fails with `Incorrect TXT record`, wait the TTL before retrying with new tokens. Apex validation is remembered per-account for 30d, so wildcard re-issues only need **one** new TXT value.
-- Full context and the specific gotchas hit during the 2026-04-24 round are in `docs/mnr-server.md`.
+- Renewal is **out-of-band via `acme.sh`** on a workstation, then PEMs get copied up with WinRM. The server's own Certbot install (v1.13.0, 2021) is dead — ignore it.
+- DNS hosts are split:
+  - `rablab.co.za` → still Afrihost DNS. Manual DNS-01 mode. Afrihost's 14400s TTL means LE's validator cache can persist up to 4h after a failed attempt.
+  - `mondaynightracing.co.za` → being migrated to Cloudflare. See `docs/dns-cloudflare-migration.md`. Once active, use acme.sh `dns_cf` plugin with the token in `vault_cloudflare_api_token` for fully unattended renewals.
+- LE remembers apex validations per-account for 30 days, so wildcard re-issues only need the wildcard TXT after the first successful apex validation.
+- Full context (and the 2026-04-24 renewal round) is in `docs/mnr-server.md`.
 
 ## Uploading files via WinRM
 

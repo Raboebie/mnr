@@ -95,13 +95,15 @@ Results:
 | `timing.mondaynightracing.co.za` | ✅ Deployed | 2026-07-23 | LE E8 |
 | `mondaynightracing.co.za` + `*.mondaynightracing.co.za` | ⚠️ Not yet renewed | was 2026-04-22 | LE E7 (expired) |
 
-### Afrihost DNS gotcha
+### Afrihost DNS gotcha → DNS migration to Cloudflare
 
-`mondaynightracing.co.za` is on Afrihost NS: `ns.dns1.co.za`, `ns.dns2.co.za`, `ns.otherdns.net`, `ns.otherdns.com`. When polling authoritative via name (`dig @ns.dns1.co.za.`), cached data can surface — querying by **IP** (`dig @13.245.235.13`) bypasses that and shows the true zone content.
+`mondaynightracing.co.za` was on Afrihost NS: `ns.dns1.co.za`, `ns.dns2.co.za`, `ns.otherdns.net`, `ns.otherdns.com`. Each of those names resolves to two IPs, and the 8 IP endpoints served inconsistent zone content — half had our new `_acme-challenge` TXT, half didn't. LE's multi-vantage validation picks NS at random and any miss fails the renewal. Dead end.
 
-Wildcard renewal kept failing with `Incorrect TXT record` even after TXT was consistent across all four NS — LE validator caches TXT for the record's TTL (Afrihost default TTL is 14400 s = 4 h). After a failed validation, you must either wait for that TTL or accept repeated failures until the cache expires. Plan: retry after ~14:08 SAST 2026-04-24 (4 h after the first failed attempt).
+Moved DNS hosting to **Cloudflare** (free plan). Registrar stays at Afrihost. Zone is imported, proxy is off, NS cutover is in progress — see `dns-cloudflare-migration.md` for the full state and procedure.
 
-Apex (`mondaynightracing.co.za`) validation is cached as "already validated" on the LE account for 30 days, so re-issues only require the **wildcard** TXT on subsequent attempts.
+Once the zone is fully delegated to CF, we switch acme.sh from manual DNS mode to the `dns_cf` plugin using the API token stored in the vault (`vault_cloudflare_api_token`). Future renewals become fully unattended.
+
+**Debugging tip for any Afrihost zone**: querying authoritative via *name* (`dig @ns.dns1.co.za.`) can surface cached answers; querying by **IP** (`dig @13.245.235.13`) bypasses that and shows true zone content. Also: each NS name has multiple IPs — iterate over them to find partial-sync issues.
 
 ## Ansible control
 
