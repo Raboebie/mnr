@@ -1,6 +1,6 @@
 # Repo orientation
 
-This repo is ops glue for the **Monday Night Racing** Windows server (`mnr-race`, `10.104.0.10`) and related rablab-hosted domains. There is no application code here — it's infrastructure, docs, and Ansible.
+This repo is ops glue for the **Monday Night Racing** Windows server (`mnr-race`, `10.104.0.10`), the AC EVO race server it hosts, and related rablab-hosted domains. There is no application code here — it's infrastructure, docs, and Ansible.
 
 ## Layout
 
@@ -16,12 +16,14 @@ dns/
   mondaynightracing.co.za.zone   cleaned BIND export for the CF import
 docs/
   mnr-server.md                  host, Apache vhost map, certs, gotchas
+  acevo-server.md                AC EVO race server: layout, launch, Steam update procedure
   website-c-website.md           dev.rablab.co.za DocumentRoot inventory
   website-c-mnr_website.md       mondaynightracing.co.za DocumentRoot inventory
   dns-cloudflare-migration.md    mnr.co.za DNS migration state and procedure
 scripts/
   posh-acme-setup.ps1            one-time cert issuance + deploy (run as SYSTEM, takes -CFToken)
   posh-acme-renew.ps1            daily renewal on server (deployed at C:\certs\_acme\renew.ps1)
+  acevo-decode-launch.py         decode AC EVO -serverconfig/-seasondefinition blobs to JSON
 vpn/
   mnr-jh1.ovpn     OpenVPN config (CA inlined) for the JH1 tunnel
 ```
@@ -58,9 +60,19 @@ Canonical copies of the setup and renewal scripts are in `scripts/posh-acme-*.ps
 - LE remembers apex validations per-account for 30 days, so wildcard re-issues only need the wildcard TXT after the first successful apex validation.
 - Full context (and the 2026-04-24 renewal round) is in `docs/mnr-server.md`.
 
+## AC EVO race server
+
+Lives at `C:\Users\MNR\Desktop\mnr\ACEvo_Latest` on `mnr-race`. **Started by hand** — no service, no scheduled task, nothing in Startup. `Get-Process ServerLauncher` is the "is it up?" check.
+
+Its config is not in a file: the launcher passes the whole thing as base64+zlib blobs on the `AssettoCorsaEVOServer.exe` command line (`-serverconfig`, `-seasondefinition`). Decode them with `scripts/acevo-decode-launch.py`. The driver/admin passwords live inside those blobs — if they're ever rotated, put them in the vault rather than in a doc.
+
+Updates come from a Steam **Assetto Corsa EVO Dedicated Server** install on a workstation, pushed up over WinRM. Stop the launcher first (it locks its own exe/dll), hash-compare both sides, copy only what differs, and verify by hash afterwards. `cars.json` and `events_*.json` are league-tuned — don't overwrite them with Steam stock. Full procedure in `docs/acevo-server.md`.
+
 ## Uploading files via WinRM
 
 `pywinrm`'s `run_ps` caps a single script at ~3000 characters. For binary uploads (certs, keys), base64-encode locally and append in chunks of ~2500 chars to a staging `.b64` file on the server, then decode with `[Convert]::FromBase64String` + `[IO.File]::WriteAllBytes`. There is a reference implementation in the git history under the 2026-04-24 cert deploy.
+
+For bulk file pushes, `win_copy` in a **playbook** handles chunking for you and is much less painful. Do not use the ad-hoc `-m win_copy -a 'src=... dest=...'` form when either path contains spaces (e.g. the Steam install dir) — ad-hoc args split on whitespace and it fails with *"win_copy has extra params"*. Note also that a failed `ansible-playbook` inside a backgrounded shell pipeline can still report exit 0 from the wrapping command — check the play recap, not just the exit code.
 
 ## Things to be careful about
 
@@ -68,3 +80,5 @@ Canonical copies of the setup and renewal scripts are in `scripts/posh-acme-*.ps
 - `httpd-ssl.conf` is intentionally empty; SSL globals are configured per-vhost.
 - `C:\Certbot\csr\` and `keys\` have ~120 leftover files from a broken 2021 auto-renew loop. Harmless but visually noisy.
 - The `mnr` account works over WinRM only because `LocalAccountTokenFilterPolicy=1` is set in the registry. If someone wipes that key, remote auth starts failing with `InvalidCredentialsError` despite correct creds.
+- **`C:` is tight on space** — 4.4 GB free as of 2026-07-13. `ACEvo_Latest\content.kspkg` alone is ~260 MB, and backups of it are the same again. Clear stale `.bak-*` files and old `Backup_*\` folders once a build is confirmed good, and check free space before pushing anything large.
+- Don't overwrite the AC EVO `cars.json` / `events_practice.json` / `events_race_weekend.json` from a Steam copy — they differ from stock and look league-tuned.
