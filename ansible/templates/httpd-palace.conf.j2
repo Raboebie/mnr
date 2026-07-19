@@ -1,0 +1,29 @@
+# Managed by mnr/ansible/deploy-palace.yml — do not edit on the server by hand.
+<VirtualHost *:443>
+    ServerName palace.mondaynightracing.co.za
+
+    SSLEngine on
+    SSLCertificateFile    "{{ palace_cert }}"
+    SSLCertificateKeyFile "{{ palace_key }}"
+
+    DocumentRoot "C:/palace/web"
+    AddType application/wasm .wasm
+    <Directory "C:/palace/web">
+        Require all granted
+        Options -Indexes -MultiViews
+        FallbackResource /index.html
+    </Directory>
+
+    ProxyPreserveHost On
+
+    # WebSocket upgrade -> Node gateway (loopback)
+    RewriteEngine On
+    RewriteCond %{HTTP:Upgrade} =websocket [NC]
+    RewriteRule ^/?(.*) "ws://127.0.0.1:8787/$1" [P,L]
+
+    # Health check -> Node gateway
+    ProxyPass        /health http://127.0.0.1:8787/health
+    ProxyPassReverse /health http://127.0.0.1:8787/health
+
+    ErrorLog "logs/palace-proxy-error.log"
+</VirtualHost>
