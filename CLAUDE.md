@@ -82,3 +82,50 @@ For bulk file pushes, `win_copy` in a **playbook** handles chunking for you and 
 - The `mnr` account works over WinRM only because `LocalAccountTokenFilterPolicy=1` is set in the registry. If someone wipes that key, remote auth starts failing with `InvalidCredentialsError` despite correct creds.
 - **`C:` is tight on space** — 4.4 GB free as of 2026-07-13. `ACEvo_Latest\content.kspkg` alone is ~260 MB, and backups of it are the same again. Clear stale `.bak-*` files and old `Backup_*\` folders once a build is confirmed good, and check free space before pushing anything large.
 - Don't overwrite the AC EVO `cars.json` / `events_practice.json` / `events_race_weekend.json` from a Steam copy — they differ from stock and look league-tuned.
+
+## Palace deployment (palace.mondaynightracing.co.za)
+
+The Palace card game (repo: `~/git/personal/shithead`, aka Shithead) runs on `mnr-race` as a
+dev/beta host: the Expo **web client** served static by Apache, talking to the **`@palace/server`**
+WebSocket gateway running as a Windows service. Deployed 2026-07-19.
+
+**Build the artifacts first** (in the shithead repo):
+```bash
+pnpm --filter @palace/server build                      # -> apps/server/dist/server.js (esbuild bundle)
+EXPO_PUBLIC_SERVER_URL="wss://palace.mondaynightracing.co.za/ws" \
+  pnpm --filter @palace/client exec expo export -p web  # -> apps/client/dist/
+```
+
+**Then deploy** (from `ansible/`):
+```bash
+ansible-playbook deploy-palace.yml            # full run, or --tags dirs,node,nssm,artifacts,apache,service,start
+```
+Redeploy after a code change = rebuild the two artifacts + re-run the playbook. The `artifacts` tag
+purges `C:\palace\web` before copying (Expo hashes bundle names, so stale chunks would otherwise pile
+up on the tight C: disk). The **`start` tag is the only disruptive one** — it graceful-restarts the
+single shared `httpd.exe`, briefly blipping every vhost (acc/ams2/timing/mnr) — run it off-peak.
+
+**On-disk layout** (`C:\palace\`): `node\` (portable Node 22.12.0), `app\server.js` (the bundle),
+`web\` (static export, DocumentRoot), `data\palace.db` (SQLite WAL, `PALACE_DATA_DIR`), `logs\`
+(`out.log`/`err.log`), `tools\nssm.exe`.
+
+**Service:** `palace-server`, an NSSM service — `node --experimental-sqlite server.js`, bound to
+`127.0.0.1:8787` (loopback only; Apache is the sole ingress), `Start=SERVICE_AUTO_START` (boots) with
+`AppExit Default Restart` (crash-restart). Check: `nssm status palace-server`, `Get-Content
+C:\palace\logs\out.log -Tail 20`, `curl http://127.0.0.1:8787/health`.
+
+**Apache:** vhost `conf\extra\httpd-palace.conf` (rendered from `ansible/templates/httpd-palace.conf.j2`,
+`Include`d at the end of `httpd.conf`), wildcard cert `C:/certs/mondaynightracing.co.za/`. It serves the
+static client and reverse-proxies the WebSocket (via `mod_proxy_wstunnel`, which this deploy added to
+`httpd.conf`) + `/health` to the loopback gateway. DNS already resolves via the `*` wildcard record — no
+Cloudflare change was needed.
+
+**Known limitations (beta):** rooms are in-memory, so a service restart drops in-flight games; no
+rate-limit / room-creation cap yet. The Skia canvas does not mount on the web build (renders via
+react-native-web instead), so the burn/pickup visual effects don't show on web — a client-side follow-up,
+not a server/deploy issue.
+
+**Vault note:** the vault password was lost and **re-keyed** on 2026-07-19 (new password is in the
+gitignored `ansible/.vault_password`, per the existing convention — never in a committed file). Only the
+WinRM creds were recovered; `vault_vpn_*` and `vault_cloudflare_api_token` are `REPLACE_ME_*` placeholders — refill before
+any VPN-bring-up or Cloudflare DNS automation).

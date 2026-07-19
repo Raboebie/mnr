@@ -1,0 +1,249 @@
+---
+# Deploy Palace (web client + @palace/server gateway) to mnr-race.
+# Spec: shithead repo docs/superpowers/specs/2026-07-19-palace-deployment-mnr-design.md
+# Artifacts are built in the shithead repo first:
+#   pnpm --filter @palace/server build            -> apps/server/dist/server.js
+#   EXPO_PUBLIC_SERVER_URL=wss://palace.mondaynightracing.co.za/ws \
+#     pnpm --filter @palace/client exec expo export -p web   -> apps/client/dist/
+#
+# Tags run in dependency order: dirs -> node -> nssm -> artifacts -> apache -> service -> start.
+# Running a later tag on a fresh box before its predecessors will fail (e.g. `start` needs
+# the service registered by `service`). Run them in order, or do one full `ansible-playbook` run.
+# The `start` tag is the ONLY one that touches the running Apache / starts the service.
+- name: Deploy Palace to mnr-race
+  hosts: windows
+  gather_facts: false
+  vars:
+    node_version: "22.12.0"
+    nssm_version: "2.24"
+    palace_root: 'C:\palace'
+    # Derived from node_version so a version bump stays in one place:
+    palace_node_exe: 'C:\palace\node\node-v{{ node_version }}-win-x64\node.exe'
+    # Artifact sources on the control node (override with -e if paths differ):
+    palace_src_server: /home/dihan/git/personal/shithead/apps/server/dist/server.js
+    palace_src_web: /home/dihan/git/personal/shithead/apps/client/dist/
+    apache_conf: 'C:\Apache24\conf\httpd.conf'
+    apache_bin: 'C:\Apache24\bin\httpd.exe'
+    palace_cert: 'C:/certs/mondaynightracing.co.za/fullchain.pem'
+    palace_key: 'C:/certs/mondaynightracing.co.za/privkey.pem'
+
+  tasks:
+    # --- Task 3: directory tree ---------------------------------------------
+    - name: Ensure palace directory tree
+      tags: [dirs]
+      ansible.windows.win_file:
+        path: "{{ item }}"
+        state: directory
+      loop:
+        - 'C:\palace'
+        - 'C:\palace\app'
+        - 'C:\palace\web'
+        - 'C:\palace\data'
+        - 'C:\palace\logs'
+        - 'C:\palace\tools'
+        - 'C:\palace\node'
+
+    # --- Task 4: portable Node 22 -------------------------------------------
+    - name: Check for portable node.exe
+      tags: [node]
+      ansible.windows.win_stat:
+        path: "{{ palace_node_exe }}"
+      register: node_stat
+
+    - name: Download Node zip
+      tags: [node]
+      when: not node_stat.stat.exists
+      ansible.windows.win_get_url:
+        url: "https://nodejs.org/dist/v{{ node_version }}/node-v{{ node_version }}-win-x64.zip"
+        dest: 'C:\palace\node\node.zip'
+
+    - name: Expand Node zip
+      tags: [node]
+      when: not node_stat.stat.exists
+      ansible.windows.win_shell: >-
+        Expand-Archive -Path 'C:\palace\node\node.zip'
+        -DestinationPath 'C:\palace\node' -Force
+
+    - name: Remove the Node zip (tight disk on C:)
+      tags: [node]
+      when: not node_stat.stat.exists
+      ansible.windows.win_file:
+        path: 'C:\palace\node\node.zip'
+        state: absent
+
+    - name: Verify node runs
+      tags: [node]
+      ansible.windows.win_command: '"{{ palace_node_exe }}" -v'
+      register: node_ver
+      changed_when: false
+
+    - name: Show node version
+      tags: [node]
+      ansible.builtin.debug:
+        var: node_ver.stdout
+
+    # --- Task 5: NSSM -------------------------------------------------------
+    - name: Check for nssm.exe
+      tags: [nssm]
+      ansible.windows.win_stat:
+        path: 'C:\palace\tools\nssm.exe'
+      register: nssm_stat
+
+    - name: Download NSSM zip
+      tags: [nssm]
+      when: not nssm_stat.stat.exists
+      ansible.windows.win_get_url:
+        url: "https://nssm.cc/release/nssm-{{ nssm_version }}.zip"
+        dest: 'C:\palace\tools\nssm.zip'
+
+    - name: Expand + place nssm.exe (win64)
+      tags: [nssm]
+      when: not nssm_stat.stat.exists
+      ansible.windows.win_shell: >-
+        Expand-Archive -Path 'C:\palace\tools\nssm.zip' -DestinationPath 'C:\palace\tools\_nssm' -Force;
+        Copy-Item 'C:\palace\tools\_nssm\nssm-{{ nssm_version }}\win64\nssm.exe' 'C:\palace\tools\nssm.exe' -Force
+
+    - name: Remove the NSSM zip + scratch dir (tight disk on C:)
+      tags: [nssm]
+      when: not nssm_stat.stat.exists
+      ansible.windows.win_file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - 'C:\palace\tools\nssm.zip'
+        - 'C:\palace\tools\_nssm'
+
+    - name: Verify nssm present
+      tags: [nssm]
+      ansible.windows.win_stat:
+        path: 'C:\palace\tools\nssm.exe'
+      register: nssm_final
+      failed_when: not nssm_final.stat.exists
+
+    # --- Task 6: artifacts --------------------------------------------------
+    - name: Copy server bundle
+      tags: [artifacts]
+      ansible.windows.win_copy:
+        src: "{{ palace_src_server }}"
+        dest: 'C:\palace\app\server.js'
+
+    # Expo hashes bundle filenames per build, so a plain copy would leave stale
+    # _expo chunks behind and erode the (tight) C: disk over redeploys. Purge first.
+    - name: Clear web dir so stale hashed bundles don't accumulate
+      tags: [artifacts]
+      ansible.windows.win_file:
+        path: 'C:\palace\web'
+        state: absent
+
+    - name: Recreate web dir
+      tags: [artifacts]
+      ansible.windows.win_file:
+        path: 'C:\palace\web'
+        state: directory
+
+    - name: Copy web export (recursive)
+      tags: [artifacts]
+      ansible.windows.win_copy:
+        src: "{{ palace_src_web }}"
+        dest: 'C:\palace\web\'
+
+    # --- Task 7: Apache config (no restart here) ----------------------------
+    - name: Ensure mod_proxy_wstunnel is loaded
+      tags: [apache]
+      community.windows.win_lineinfile:
+        path: "{{ apache_conf }}"
+        line: 'LoadModule proxy_wstunnel_module modules/mod_proxy_wstunnel.so'
+        insertafter: '^LoadModule proxy_http_module'
+        state: present
+      register: wstunnel_line
+
+    - name: Deploy the palace vhost include file
+      tags: [apache]
+      ansible.windows.win_template:
+        src: templates/httpd-palace.conf.j2
+        dest: 'C:\Apache24\conf\extra\httpd-palace.conf'
+      register: vhost_file
+
+    - name: Ensure httpd.conf includes the palace vhost
+      tags: [apache]
+      community.windows.win_lineinfile:
+        path: "{{ apache_conf }}"
+        line: 'Include conf/extra/httpd-palace.conf'
+        insertafter: EOF
+        state: present
+      register: include_line
+
+    - name: Validate Apache config
+      tags: [apache]
+      ansible.windows.win_command: '"{{ apache_bin }}" -t'
+      register: httpd_t
+      changed_when: false
+      failed_when: httpd_t.rc != 0
+
+    # --- Task 8: register the service (stopped) -----------------------------
+    - name: Register / refresh the palace-server service
+      tags: [service]
+      ansible.windows.win_shell: |
+        # NB: do NOT use ErrorActionPreference='Stop' here — nssm writes expected UTF-16
+        # stderr (e.g. "Can't open service!") when the service is absent, which under Stop
+        # becomes a terminating NativeCommandError and kills the script before we can install.
+        $ErrorActionPreference = 'Continue'
+        $nssm = 'C:\palace\tools\nssm.exe'
+        $svc  = 'palace-server'
+        $node = '{{ palace_node_exe }}'
+        # Wrap every nssm call so a failed 'set' throws instead of being silently ignored.
+        # (throw is terminating regardless of $ErrorActionPreference.)
+        function Nssm { $out = & $nssm @args 2>&1; if ($LASTEXITCODE -ne 0) { throw "nssm $($args -join ' ') failed (rc=$LASTEXITCODE): $out" } }
+        & $nssm status $svc 2>&1 | Out-Null
+        $installed = $false
+        if ($LASTEXITCODE -ne 0) { Nssm install $svc $node; $installed = $true }
+        Nssm set $svc Application $node
+        Nssm set $svc AppParameters '--experimental-sqlite C:\palace\app\server.js'
+        Nssm set $svc AppDirectory 'C:\palace\app'
+        Nssm set $svc AppEnvironmentExtra 'HOST=127.0.0.1' 'PORT=8787' 'PALACE_DATA_DIR=C:\palace\data'
+        Nssm set $svc Start SERVICE_AUTO_START
+        Nssm set $svc AppStdout 'C:\palace\logs\out.log'
+        Nssm set $svc AppStderr 'C:\palace\logs\err.log'
+        Nssm set $svc AppExit Default Restart
+        Nssm set $svc AppThrottle 5000
+        if ($installed) { Write-Output 'installed' } else { Write-Output 'configured' }
+      register: svc_cfg
+      changed_when: "'installed' in svc_cfg.stdout"
+
+    - name: Show service config result
+      tags: [service]
+      ansible.builtin.debug:
+        var: svc_cfg.stdout_lines
+
+    # --- Task 9: start service + reload Apache (DISRUPTIVE) -----------------
+    # NOTE: mnr-race runs ONE httpd.exe serving every vhost. The restart below
+    # bounces that shared process, so acc/ams2/timing/mondaynightracing all take a
+    # brief connection blip too — run the `start` tag during a low-traffic window.
+    - name: Start (or restart) palace-server
+      tags: [start]
+      ansible.windows.win_service:
+        name: palace-server
+        state: restarted
+        start_mode: auto
+
+    - name: Wait for the gateway to answer on loopback
+      tags: [start]
+      ansible.windows.win_uri:
+        url: http://127.0.0.1:8787/health
+        return_content: true
+      register: health
+      retries: 5
+      delay: 2
+      until: health.status_code is defined and health.status_code == 200
+
+    - name: Assert health payload
+      tags: [start]
+      ansible.builtin.assert:
+        that:
+          - health.json.ok | default(false)
+        fail_msg: "gateway /health did not return ok:true — check C:\\palace\\logs\\err.log"
+
+    - name: Graceful Apache restart to load the palace vhost
+      tags: [start]
+      ansible.windows.win_command: '"{{ apache_bin }}" -k restart -n Apache2.4'
+      changed_when: true
