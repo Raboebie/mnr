@@ -65,4 +65,4 @@ After the first successful `--issue`, acme.sh persists `CF_Token` into `~/.acme.
 
 ### Server-side automation now owns MNR renewals
 
-The workstation-side acme.sh flow proved the end-to-end path on 2026-04-24. Same day, we moved renewal responsibility to the server itself using **Posh-ACME** — see `mnr-server.md` for the full writeup. The canonical scripts are in `scripts/posh-acme-*.ps1`. `dev.rablab.co.za` stays on the workstation-based flow until its DNS also moves to Cloudflare.
+The workstation-side acme.sh flow proved the end-to-end path on 2026-04-24. Same day, we moved renewal responsibility to the server itself using **Posh-ACME** — see `mnr-server.md` for the full writeup. The canonical scripts are in `scripts/posh-acme-*.ps1`. (`dev.rablab.co.za` was the last site on the workstation-based Afrihost flow; it was removed from the server 2026-07-24, so that flow is no longer in use.)

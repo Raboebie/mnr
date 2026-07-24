@@ -12,7 +12,22 @@
         Require all granted
         Options -Indexes -MultiViews
         FallbackResource /index.html
+
+        # The app shell must always revalidate so a redeploy is picked up on the
+        # next visit without a hard refresh. Hashed bundles below cache forever.
+        <IfModule mod_headers.c>
+            <Files "index.html">
+                Header set Cache-Control "no-cache, must-revalidate"
+            </Files>
+        </IfModule>
     </Directory>
+
+    # Content-hashed bundles (entry-<hash>.js, etc.) are immutable — cache hard.
+    <IfModule mod_headers.c>
+        <LocationMatch "^/_expo/static/">
+            Header set Cache-Control "public, max-age=31536000, immutable"
+        </LocationMatch>
+    </IfModule>
 
     ProxyPreserveHost On
 

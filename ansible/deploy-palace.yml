@@ -157,6 +157,15 @@
         state: present
       register: wstunnel_line
 
+    - name: Ensure mod_headers is loaded (cache-control on the app shell)
+      tags: [apache]
+      community.windows.win_lineinfile:
+        path: "{{ apache_conf }}"
+        line: 'LoadModule headers_module modules/mod_headers.so'
+        insertafter: '^LoadModule proxy_http_module'
+        state: present
+      register: headers_line
+
     - name: Deploy the palace vhost include file
       tags: [apache]
       ansible.windows.win_template:
