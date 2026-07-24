@@ -1,9 +1,11 @@
 # `C:\website`
 
-DocumentRoot for two Apache vhosts on `mnr-race`:
+> **Note (2026-07-24):** the `dev.rablab.co.za` vhost was removed from the Apache config. The files below remain on disk but are no longer served by any vhost. Kept for reference / in case the site is reinstated.
 
-- `dev.rablab.co.za` — serves the static content here.
-- `timing.mondaynightracing.co.za` — declared with the same DocumentRoot but **proxies all traffic** to `http://10.104.0.10:8773/`, so the files here are never served for `timing.*` in practice.
+DocumentRoot formerly for the `dev.rablab.co.za` vhost on `mnr-race` (now removed):
+
+- `dev.rablab.co.za` — used to serve the static content here.
+- `timing.mondaynightracing.co.za` — still declares this same DocumentRoot but **proxies all traffic** to `http://10.104.0.10:8773/`, so the files here are never served for `timing.*` in practice.
 
 As of 2026-04-24 this is effectively a **one-page privacy-policy site** for an app called *Tools4Nurds*.
 

@@ -1,6 +1,6 @@
 # mnr-race server
 
-Windows host that serves the Monday Night Racing web properties plus `dev.rablab.co.za`. Reached over the JH1 OpenVPN tunnel.
+Windows host that serves the Monday Night Racing web properties. Reached over the JH1 OpenVPN tunnel. (`dev.rablab.co.za` was removed 2026-07-24 — bare-IP and unmatched hosts now redirect to the main site.)
 
 ## Host facts
 
@@ -58,7 +58,8 @@ All in `conf/extra/httpd-vhosts.conf`:
 
 | ServerName | Port | Backend | DocumentRoot | Cert path |
 |---|---|---|---|---|
-| `dev.rablab.co.za` | 80 → 443 redirect | — | `C:/website` | `C:\Certbot\live\dev.rablab.co.za\dev_rablab_co_za.crt` + `_key.txt` + `.ca-bundle` |
+| `mnr-default` (default) | 80 | — | — | HTTP→HTTPS; bare-IP/empty host → `https://mondaynightracing.co.za` |
+| `mnr-default-ssl` (default) | 443 | — | — | bare-IP/unmatched-SNI → 301 `https://mondaynightracing.co.za` (mnr wildcard cert, mismatch expected) |
 | `timing.mondaynightracing.co.za` | 443 | proxy `http://10.104.0.10:8773/` + WS upgrade | `C:/website` | `C:\certs\timing.mondaynightracing.co.za\certificate.cer` + `private.key` |
 | `mondaynightracing.co.za` | 443 | static PHP/HTML, SPA fallback to `/index.html` | `C:/mnr_website` | `C:\certs\mondaynightracing.co.za\fullchain.pem` + `privkey.pem` |
 | `acc.mondaynightracing.co.za` | 443 | proxy `http://10.104.0.10:8773/` + WS upgrade | — | same as apex (wildcard SAN) |
@@ -74,7 +75,9 @@ HSTS: max-age=63072000; includeSubDomains; preload
 
 ## Certificates
 
-Certbot 1.13.0 (stale, 2021) is installed at `C:\Program Files (x86)\Certbot\bin\certbot.exe` but its `live/` dir contains zero-byte files — broken and ignored. The live automation path is **Posh-ACME on the server** for the two MNR certs (mondaynightracing.co.za wildcard + timing), driven by a daily SYSTEM scheduled task. `dev.rablab.co.za` still renews from a workstation because its DNS is still on Afrihost.
+Certbot 1.13.0 (stale, 2021) is installed at `C:\Program Files (x86)\Certbot\bin\certbot.exe` but its `live/` dir contains zero-byte files — broken and ignored. The live automation path is **Posh-ACME on the server** for the two MNR certs (mondaynightracing.co.za wildcard + timing), driven by a daily SYSTEM scheduled task. This now covers every cert the server serves (`dev.rablab.co.za` was removed 2026-07-24).
+
+> **2026-07-24 renewal incident:** both certs silently expired (2026-07-23) even though the daily task logged success. Posh-ACME had renewed them on 2026-06-23 (valid to 2026-09-21), but `renew.ps1` crashed in its deploy loop — `Submit-Renewal` returns `PACertificate` objects whose domain is on `.Subject`, not `.MainDomain`, so `$deployMap.ContainsKey($null)` threw and the fresh PEMs never reached Apache. Fixed in `scripts/posh-acme-renew.ps1` (Subject fallback + `Get-PACertificate` paths + `httpd -t` gate before restart). The CF API token was also rotated into the vault and re-saved into Posh-ACME state as SYSTEM (verified decryptable + valid). **When auditing renewal, compare the on-disk PEM's `NotAfter` against Posh-ACME's tracked `CertExpires` — a "nothing to renew" log line does not prove the served cert is current.**
 
 ### Posh-ACME on-server automation
 
@@ -108,9 +111,10 @@ Results:
 
 | Cert | Status | New expiry | Issuer |
 |---|---|---|---|
-| `dev.rablab.co.za` (+ `www.dev`) | ✅ Deployed | 2026-07-23 | LE E8 (was Sectigo — moved to LE) |
 | `timing.mondaynightracing.co.za` | ✅ Deployed | 2026-07-23 | LE E8 |
 | `mondaynightracing.co.za` + `*.mondaynightracing.co.za` | ✅ Deployed (after CF DNS migration) | 2026-07-23 | LE E7 |
+
+> These 2026-04-24 issues expired 2026-07-23. Posh-ACME auto-renewed both on 2026-06-23 (now valid to **2026-09-21**), but a deploy bug meant the fresh PEMs weren't served until manually deployed during the 2026-07-24 fix (see the incident note under **Certificates** above). `dev.rablab.co.za` was removed 2026-07-24 and is no longer issued.
 
 The wildcard was the holdout — manual-mode DNS-01 kept failing against Afrihost because their authoritative NS IPs were serving inconsistent zone content. Resolved by migrating the zone to Cloudflare and re-issuing with the `dns_cf` plugin (fully automated). Full story in `dns-cloudflare-migration.md`.
 
