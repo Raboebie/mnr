@@ -44,19 +44,20 @@ Once connected, `ansible windows -m win_ping` from `ansible/` should return `pon
 
 - Source of truth for cert paths: `sites[*]` in `vars.yml`. That list matches what the live vhosts in `C:\Apache24\conf\extra\httpd-vhosts.conf` reference.
 - Renewal is **out-of-band via `acme.sh`** on a workstation, then PEMs get copied up with WinRM. The server's own Certbot install (v1.13.0, 2021) is dead — ignore it.
-- DNS hosts are split:
-  - `rablab.co.za` → still on Afrihost DNS. Manual DNS-01 mode from a workstation (`~/.acme.sh/`). Afrihost's 14400s TTL means LE's validator cache can persist up to 4h after a failed attempt.
-  - `mondaynightracing.co.za` → on Cloudflare (migrated 2026-04-24). Renewal is **fully automated on the server itself** via Posh-ACME — see below.
+- `mondaynightracing.co.za` → on Cloudflare (migrated 2026-04-24). Renewal is **fully automated on the server itself** via Posh-ACME — see below. This now covers every site the server serves.
+  - (`rablab.co.za` was on Afrihost DNS with a manual DNS-01 workstation flow via `~/.acme.sh/`; no longer relevant since `dev.rablab.co.za` was removed 2026-07-24. If a rablab site returns, note Afrihost's 14400s TTL means LE's validator cache can persist up to 4h after a failed attempt.)
 
 ### Server-side automated renewal (mnr-race)
 
 Set up 2026-04-24 using Posh-ACME v4.32.0 (installed from the PowerShell Gallery `.nupkg` directly, bypassing the broken NuGet provider bootstrap). State lives at `C:\certs\_acme\config` (POSHACME_HOME set machine-wide). The Cloudflare API token is stored DPAPI-encrypted inside that state, bound to SYSTEM.
 
-Two certs are tracked: `mondaynightracing.co.za + *.mondaynightracing.co.za` and `timing.mondaynightracing.co.za`. A daily scheduled task `AcmeRenew` runs `C:\certs\_acme\renew.ps1` at 03:15 as SYSTEM. The script calls `Submit-Renewal`, which respects LE's 30-day window — on most days it's a no-op. When a cert does renew, the script copies the new fullchain+key into the paths `httpd-vhosts.conf` references and restarts `Apache2.4`. Log at `C:\certs\_acme\renew.log`.
+Two certs are tracked: `mondaynightracing.co.za + *.mondaynightracing.co.za` and `timing.mondaynightracing.co.za`. A daily scheduled task `AcmeRenew` runs `C:\certs\_acme\renew.ps1` at 03:15 as SYSTEM. The script calls `Submit-Renewal`, which respects LE's 30-day window — on most days it's a no-op. When a cert does renew, the script copies the new fullchain+key into the paths `httpd-vhosts.conf` references and restarts `Apache2.4` (guarded behind `httpd -t` so a bad deploy leaves the running server untouched). Log at `C:\certs\_acme\renew.log`.
+
+> **2026-07-24 incident:** the certs silently expired even though `Submit-Renewal` kept succeeding. Root cause: on the actual renewal day (2026-06-23) `renew.ps1` renewed both certs but crashed in its deploy loop — `Submit-Renewal` returns `PACertificate` objects whose domain is on `.Subject`, not `.MainDomain`, so `$deployMap.ContainsKey($null)` threw and the fresh PEMs never reached Apache. Fixed in `scripts/posh-acme-renew.ps1` (derive the domain from `.Subject` as a fallback, pull file paths from `Get-PACertificate`, and only restart after `httpd -t` passes). Lesson: a green "0 renewed / nothing to renew" log line is *not* proof the served cert is current — check the on-disk PEM's `NotAfter` against Posh-ACME's tracked `CertExpires`.
 
 Canonical copies of the setup and renewal scripts are in `scripts/posh-acme-*.ps1`. If the server state is ever lost (reimage, disk failure), re-run the setup script as SYSTEM with `-CFToken` from the vault, re-register the daily task, and you're back.
 
-`dev.rablab.co.za` is **not** covered by this — its DNS is still on Afrihost, so it's still renewed manually from a workstation. Revisit once rablab moves to Cloudflare too.
+`dev.rablab.co.za` was **removed** from the Apache config on 2026-07-24 (it was the only rablab-hosted site). Its two vhosts were replaced by default `*:80`/`*:443` vhosts that 301-redirect bare-IP access and any unmatched host to `https://mondaynightracing.co.za`. The old cert files under `C:\Certbot\live\dev.rablab.co.za\` are left in place but no longer served. Nothing on the server now needs the Afrihost manual DNS-01 renewal path.
 - LE remembers apex validations per-account for 30 days, so wildcard re-issues only need the wildcard TXT after the first successful apex validation.
 - Full context (and the 2026-04-24 renewal round) is in `docs/mnr-server.md`.
 

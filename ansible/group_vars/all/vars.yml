@@ -38,13 +38,10 @@ apache:
   bin: 'C:\Apache24\bin\httpd.exe'
   openssl: 'C:\Apache24\bin\openssl.exe'
 
-# Sites served and the cert files they reference
+# Sites served and the cert files they reference.
+# dev.rablab.co.za was removed from the Apache config 2026-07-24; bare-IP and
+# any unmatched host now 301-redirect to https://mondaynightracing.co.za.
 sites:
-  - name: dev.rablab.co.za
-    sans: [dev.rablab.co.za, www.dev.rablab.co.za]
-    cert: 'C:\Certbot\live\dev.rablab.co.za\dev_rablab_co_za.crt'
-    key: 'C:\Certbot\live\dev.rablab.co.za\dev.rablab.co.za_key.txt'
-    chain: 'C:\Certbot\live\dev.rablab.co.za\dev_rablab_co_za.ca-bundle'
   - name: timing.mondaynightracing.co.za
     sans: [timing.mondaynightracing.co.za]
     cert: 'C:\certs\timing.mondaynightracing.co.za\certificate.cer'
