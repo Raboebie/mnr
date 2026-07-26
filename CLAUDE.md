@@ -17,6 +17,7 @@ dns/
 docs/
   mnr-server.md                  host, Apache vhost map, certs, gotchas
   acevo-server.md                AC EVO race server: layout, launch, Steam update procedure
+  acc-server-manager.md          ACC Server Manager (acc.mondaynightracing.co.za): store, championship model
   website-c-website.md           dev.rablab.co.za DocumentRoot inventory
   website-c-mnr_website.md       mondaynightracing.co.za DocumentRoot inventory
   dns-cloudflare-migration.md    mnr.co.za DNS migration state and procedure
@@ -24,6 +25,7 @@ scripts/
   posh-acme-setup.ps1            one-time cert issuance + deploy (run as SYSTEM, takes -CFToken)
   posh-acme-renew.ps1            daily renewal on server (deployed at C:\certs\_acme\renew.ps1)
   acevo-decode-launch.py         decode AC EVO -serverconfig/-seasondefinition blobs to JSON
+  acc-championship/              generate ACC championship+preset JSON from a season.yml (gen.py)
 vpn/
   mnr-jh1.ovpn     OpenVPN config (CA inlined) for the JH1 tunnel
 ```
@@ -68,6 +70,12 @@ Lives at `C:\Users\MNR\Desktop\mnr\ACEvo_Latest` on `mnr-race`. **Started by han
 Its config is not in a file: the launcher passes the whole thing as base64+zlib blobs on the `AssettoCorsaEVOServer.exe` command line (`-serverconfig`, `-seasondefinition`). Decode them with `scripts/acevo-decode-launch.py`. The driver/admin passwords live inside those blobs — if they're ever rotated, put them in the vault rather than in a doc.
 
 Updates come from a Steam **Assetto Corsa EVO Dedicated Server** install on a workstation, pushed up over WinRM. Stop the launcher first (it locks its own exe/dll), hash-compare both sides, copy only what differs, and verify by hash afterwards. `cars.json` and `events_*.json` are league-tuned — don't overwrite them with Steam stock. Full procedure in `docs/acevo-server.md`.
+
+## ACC Server Manager (acc.mondaynightracing.co.za)
+
+Separate from AC EVO: this is the **Assetto Corsa Competizione** platform — Emperor Servers' "ACC Server Manager" v1.4.6, a Go web app at `C:\Users\MNR\Desktop\mnr\Official Race Servers\Race` on `mnr-race`, bound to `:8773` and reverse-proxied by Apache (`acc.mondaynightracing.co.za`). Runs as the NSSM service **`acc-server-manager`** (Auto start, crash-restart, as `MNR-RACE\MNR`) — set up 2026-07-26; `Restart-Service acc-server-manager` over WinRM now, no RDP needed. It supervises up to three `accServer.exe` instances (A/B/C, GT3). `Get-Service acc-server-manager` / `Get-Process accServer` are the up-checks.
+
+Config is a **JSON store** at `store.json\` (one file per object). The non-obvious bit: a championship is **two linked object types** — `championships\<id>.json` (points, entry list, events — *no track/weather*) plus one `presets\<id>.json` per round (track + weather in `Data.RaceConfig`). The join, learned the hard way: **`event.ID == preset.ID`** (the preset filename *is* the event ID), `metaData: championship:<champID>:<eventID>`, and the 3 FP/Q/R session UUIDs are a **shared template** across the whole championship (not a per-event key); `Deleted` must be the zero-time string, not `null`. Get any wrong → manager silently shows "0 events configured". Use `scripts/acc-championship/remap.py` to reschedule an existing championship (transforms the manager's own files in place, preserving IDs — the verified path); `gen.py` builds new ones but isn't verified for raw file-drop. Deploy via `ansible/deploy-acc-championships.yml` (restarts the service; **off-peak** — blips live `accServer`). ACC server passwords live in `store.json\servers\server_N\serverOptions.json`, not in championship/preset objects — vault them if rotated. Full detail in `docs/acc-server-manager.md`.
 
 ## Uploading files via WinRM
 

@@ -1,0 +1,102 @@
+{
+  "ID": "",
+  "Name": "",
+  "Data": {
+    "RaceConfig": {
+      "track": "",
+      "preRaceWaitingTimeSeconds": 90,
+      "sessionOverTimeSeconds": 180,
+      "ambientTemp": 24,
+      "trackTemp": 30,
+      "cloudLevel": 0.05,
+      "rain": 0,
+      "weatherRandomness": 4,
+      "postQualySeconds": 120,
+      "postRaceSeconds": 90,
+      "sessions": [],
+      "metaData": "",
+      "simracerWeatherConditions": 0,
+      "isFixedConditionQualification": 0,
+      "configVersion": 7,
+      "activeBOP": "99bad823-c97c-4680-a81d-f42867baa42d",
+      "serverManagerEventDetails": {
+        "description": ""
+      }
+    },
+    "EventRules": {
+      "qualifyStandingType": 1,
+      "pitWindowLengthSec": -1,
+      "driverStintTimeSec": -1,
+      "mandatoryPitstopCount": 1,
+      "maxTotalDrivingTime": -1,
+      "maxDriversCount": 0,
+      "isRefuellingAllowedInRace": true,
+      "isRefuellingTimeFixed": false,
+      "isMandatoryPitstopRefuellingRequired": true,
+      "isMandatoryPitstopTyreChangeRequired": false,
+      "isMandatoryPitstopSwapDriverRequired": false,
+      "tyreSetCount": 50
+    },
+    "EntryList": {
+      "entries": null,
+      "forceEntryList": 0,
+      "configVersion": 7,
+      "maxCarSlots": 35,
+      "signUpForm": {
+        "Enabled": false,
+        "AskForEmail": false,
+        "AskForTeam": false,
+        "AllowMultipleDrivers": false,
+        "HideCarChoice": false,
+        "RequiresApproval": false,
+        "CarGroup": "FreeForAll",
+        "ExtraFields": [],
+        "AvailableCars": null,
+        "Responses": null
+      },
+      "date": "2026-05-03T11:48:10.8484967+02:00",
+      "file": "",
+      "linkedCustomRace": "",
+      "name": "Entry List"
+    },
+    "ServerOptionsOverride": {
+      "setPassword": false,
+      "password": "",
+      "carGroup": "GT3",
+      "trackMedalsRequirement": 0,
+      "safetyRatingRequirement": -1,
+      "racecraftRatingRequirement": -1,
+      "isRaceLocked": 0,
+      "allowAutoDQ": 1,
+      "shortFormationLap": 0,
+      "maxCarSlots": 35,
+      "randomizeTrackWhenEmpty": 0
+    },
+    "Assists": {
+      "stabilityControlLevelMax": 100,
+      "disableAutosteer": 0,
+      "disableAutoLights": 0,
+      "disableAutoWiper": 0,
+      "disableAutoEngineStart": 0,
+      "disableAutoPitLimiter": 0,
+      "disableAutoGear": 0,
+      "disableAutoClutch": 0,
+      "disableIdealLine": 0
+    },
+    "SignUpForm": null
+  },
+  "Created": "",
+  "Updated": "",
+  "Deleted": null,
+  "ChampionshipID": "",
+  "ChampionshipName": "",
+  "IsPreChampionshipPractice": false,
+  "Starred": false,
+  "ScheduleEnabled": false,
+  "Schedules": {},
+  "ScheduledTime": "0001-01-01T00:00:00Z",
+  "InitialScheduledTime": "0001-01-01T00:00:00Z",
+  "RecurrenceEnabled": false,
+  "RecurrenceRuleBase": "",
+  "RecurrenceRule": ""
+}

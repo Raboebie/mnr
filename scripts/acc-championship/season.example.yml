@@ -1,0 +1,55 @@
+# Season definition for scripts/acc-championship/gen.py
+#
+# One of these describes a whole championship. gen.py turns it into a matched set of
+# ACC Server Manager objects (one championship file + one preset per round). Edit a
+# copy of this file, then:
+#     python3 gen.py --season my-season.yml --out ./out
+#
+# Track names are ACC's internal codes (lowercase): monza, spa, zolder, brands_hatch,
+# misano, paul_ricard, silverstone, nurburgring, barcelona, zandvoort, kyalami,
+# mount_panorama, suzuka, imola, oulton_park, donington, snetterton, hungaroring,
+# laguna_seca, watkins_glen, cota, indianapolis, valencia, red_bull_ring.
+
+championship:
+  name: "Monday Night Racing - Season 4 A"
+  description: "MNR GT3 championship, generated from season.yml."
+  ignore_x_worst_events: 0
+
+# Points awarded per finishing position (P1 first). Pole/best-lap default to 0.
+points:
+  places: [35, 34, 33, 32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21,
+           20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1]
+  pole_position: 0
+  best_lap: 0
+
+# Applied to every round unless a round overrides it. dayOfWeekend: 1=Fri 2=Sat 3=Sun.
+# minutes is written to BOTH the championship (as nanoseconds) and the preset (as minutes).
+session_defaults:
+  practice:   {minutes: 240, hour_of_day: 11, day_of_weekend: 1}
+  qualifying: {minutes: 15,  hour_of_day: 11, day_of_weekend: 2}
+  race:       {minutes: 60,  hour_of_day: 11, day_of_weekend: 3}
+
+# Applied to every round unless a round's `weather:` block overrides individual keys.
+weather_defaults:
+  ambient_temp: 24
+  track_temp: 30
+  cloud_level: 0.05
+  rain: 0
+  weather_randomness: 4
+
+# The calendar. One entry per round; `track` is required, everything else is optional
+# and falls back to the *_defaults above.
+rounds:
+  - track: monza
+  - track: spa
+    weather: {cloud_level: 0.4, rain: 0.2, weather_randomness: 6}
+  - track: zandvoort
+  - track: kyalami
+    sessions: {race: {minutes: 70}}     # longer race this round
+  - track: brands_hatch
+  - track: nurburgring
+    weather: {ambient_temp: 18, track_temp: 22, cloud_level: 0.6}
+  - track: silverstone
+  - track: mount_panorama
+    name: "MNR - Bathurst Enduro"        # per-round preset name (optional)
+    sessions: {race: {minutes: 90}}

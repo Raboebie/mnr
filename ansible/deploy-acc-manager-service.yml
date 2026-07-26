@@ -1,0 +1,63 @@
+# Install the ACC Server Manager as an NSSM Windows service (done once, 2026-07-26).
+#
+# Before this the manager was hand-started from an RDP session, so every store change needed
+# someone at the console to restart it. As a service it starts on boot, crash-restarts, and can be
+# stopped/started over WinRM -- which is what deploy-acc-championships.yml now relies on.
+#
+# Run as the MNR account (to mirror the interactive setup that was known to work). The account
+# password is NOT stored in the repo -- pass it at run time; NSSM keeps it as an encrypted LSA
+# secret on the box:
+#     ansible-playbook deploy-acc-manager-service.yml \
+#       -e svc_user='.\MNR' -e svc_password='<mnr-account-password>'
+#
+# DISRUPTIVE: stops the currently-running manager (and its live accServer instances) to install
+# and test the service -- run off-peak, with someone able to RDP in case rollback is needed.
+# Rollback: nssm remove acc-server-manager confirm  (then hand-start the exe again).
+- hosts: mnr-race
+  gather_facts: no
+  vars:
+    base: 'C:\Users\MNR\Desktop\mnr\Official Race Servers\Race'
+    nssm: 'C:\palace\tools\nssm.exe'
+    svc: acc-server-manager
+  tasks:
+    - assert:
+        that: [svc_user is defined, svc_password is defined]
+        fail_msg: "pass -e svc_user='.\\MNR' -e svc_password='...' (password is not stored in the repo)"
+
+    - name: Disable browser-open in config.yml (a headless service has no desktop)
+      win_shell: |
+        $cfg = Join-Path '{{ base }}' 'config.yml'
+        if (-not (Test-Path "$cfg.bak-svc")) { Copy-Item $cfg "$cfg.bak-svc" }
+        $t = [IO.File]::ReadAllText($cfg).Replace('disable_windows_browser_open: false','disable_windows_browser_open: true')
+        [IO.File]::WriteAllText($cfg, $t, (New-Object System.Text.UTF8Encoding($false)))
+
+    - name: Stop the hand-started manager and its ACC servers
+      win_shell: |
+        Get-Process acc-server-manager,accServer -ErrorAction SilentlyContinue | Stop-Process -Force
+        Start-Sleep -Seconds 4
+
+    - name: Install + configure the NSSM service (credentials not echoed)
+      win_shell: |
+        $ErrorActionPreference = 'Stop'
+        New-Item -ItemType Directory -Force -Path (Join-Path '{{ base }}' 'logs') | Out-Null
+        & '{{ nssm }}' install {{ svc }} (Join-Path '{{ base }}' 'acc-server-manager.exe') | Out-Null
+        & '{{ nssm }}' set {{ svc }} AppDirectory '{{ base }}' | Out-Null
+        & '{{ nssm }}' set {{ svc }} Start SERVICE_AUTO_START | Out-Null
+        & '{{ nssm }}' set {{ svc }} AppExit Default Restart | Out-Null
+        & '{{ nssm }}' set {{ svc }} AppStdout (Join-Path '{{ base }}' 'logs\service-out.log') | Out-Null
+        & '{{ nssm }}' set {{ svc }} AppStderr (Join-Path '{{ base }}' 'logs\service-err.log') | Out-Null
+        & '{{ nssm }}' set {{ svc }} DisplayName 'ACC Server Manager' | Out-Null
+        & '{{ nssm }}' set {{ svc }} Description 'Assetto Corsa Competizione Server Manager (acc.mondaynightracing.co.za)' | Out-Null
+        & '{{ nssm }}' set {{ svc }} ObjectName '{{ svc_user }}' '{{ svc_password }}' | Out-Null
+      no_log: true
+
+    - name: Start and verify
+      win_shell: |
+        Start-Service {{ svc }}
+        Start-Sleep -Seconds 12
+        "service: $((Get-Service {{ svc }}).Status) / $((Get-Service {{ svc }}).StartType)"
+        "accServer procs: " + (@(Get-Process accServer -ErrorAction SilentlyContinue).Count)
+        try { "http 8773: " + (Invoke-WebRequest 'http://127.0.0.1:8773/' -UseBasicParsing -TimeoutSec 8).StatusCode }
+        catch { "http 8773 ERROR: $($_.Exception.Message)" }
+      register: verify
+    - debug: var=verify.stdout_lines

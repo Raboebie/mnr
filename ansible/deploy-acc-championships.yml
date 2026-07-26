@@ -1,0 +1,107 @@
+# Deploy ACC Server Manager championships (+ their presets) into the JSON store.
+#
+# Companion to scripts/acc-championship/remap.py (reschedule an existing championship -- the
+# verified path) or gen.py (new). Stage a merged dir with championships/ and presets/ subdirs:
+#     cd scripts/acc-championship
+#     python3 remap.py --championship orig/championships/<id>.json --presets-dir orig/presets \
+#                      --season seasons/q2a.yml --out /tmp/acc          # repeat per championship
+#     # remap writes straight into /tmp/acc/{championships,presets}; then:
+#     ansible-playbook deploy-acc-championships.yml -e stage_dir=/tmp/acc
+#
+# Target championship IDs are derived from the staged championships/*.json filenames. For
+# update-in-place it backs up and REPLACES the presets currently linked to those IDs.
+#
+# The manager reads its store only at startup, so this stops the acc-server-manager SERVICE, swaps
+# the files, and starts it again (all over WinRM -- no RDP needed since the 2026-07-26 service
+# setup). DISRUPTIVE: stopping the service also stops any live accServer instances -- run
+# off-peak. See docs/acc-server-manager.md.
+- hosts: mnr-race
+  gather_facts: no
+  vars:
+    store: 'C:\Users\MNR\Desktop\mnr\Official Race Servers\Race\store.json'
+    # stage_dir: passed with -e; must contain championships/ and presets/ subdirs.
+  tasks:
+    - name: Fail early if stage_dir was not provided
+      assert:
+        that: stage_dir is defined
+        fail_msg: "pass -e stage_dir=/path/to/staged (with championships/ and presets/ subdirs)"
+
+    - name: Collect the championship IDs being deployed (from staged filenames)
+      set_fact:
+        deploy_ids: "{{ lookup('fileglob', stage_dir ~ '/championships/*.json', wantlist=True)
+                        | map('basename') | map('regex_replace', '\\.json$', '') | list }}"
+
+    - debug: { msg: "deploying championships: {{ deploy_ids }}" }
+
+    - name: Stop the manager service and any live ACC servers (clean slate for the store swap)
+      win_shell: |
+        Stop-Service acc-server-manager -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 3
+        Get-Process accServer -ErrorAction SilentlyContinue | Stop-Process -Force  # any orphaned children
+        Start-Sleep -Seconds 2
+        "manager procs left: " + (@(Get-Process acc-server-manager,accServer -ErrorAction SilentlyContinue).Count)
+      register: stopres
+    - debug: var=stopres.stdout_lines
+
+    - name: Back up the championships + their linked presets we are about to replace
+      win_shell: |
+        $ids = @({% for id in deploy_ids %}"{{ id }}"{% if not loop.last %},{% endif %}{% endfor %})
+        $ts  = Get-Date -Format 'yyyyMMdd-HHmmss'
+        $bak = Join-Path "{{ store }}" ".backups\acc-deploy-$ts"
+        New-Item -ItemType Directory -Force -Path "$bak\championships","$bak\presets" | Out-Null
+        foreach ($id in $ids) {
+          $cf = Join-Path "{{ store }}" "championships\$id.json"
+          if (Test-Path $cf) { Copy-Item $cf "$bak\championships\" }
+        }
+        $n = 0
+        Get-ChildItem (Join-Path "{{ store }}" "presets") -Filter *.json | ForEach-Object {
+          try { $j = Get-Content $_.FullName -Raw | ConvertFrom-Json } catch { return }
+          if ($ids -contains $j.ChampionshipID) { Copy-Item $_.FullName "$bak\presets\"; $n++ }
+        }
+        "backup: $bak"; "backed up presets: $n"
+      register: bakres
+    - debug: var=bakres.stdout_lines
+
+    - name: Delete the old presets linked to these championships (about to be replaced)
+      win_shell: |
+        $ids = @({% for id in deploy_ids %}"{{ id }}"{% if not loop.last %},{% endif %}{% endfor %})
+        $del = 0
+        Get-ChildItem (Join-Path "{{ store }}" "presets") -Filter *.json | ForEach-Object {
+          try { $j = Get-Content $_.FullName -Raw | ConvertFrom-Json } catch { return }
+          if ($ids -contains $j.ChampionshipID) { Remove-Item $_.FullName -Force; $del++ }
+        }
+        "deleted old presets: $del"
+      register: delres
+    - debug: var=delres.stdout_lines
+
+    - name: Copy the new championship files
+      win_copy:
+        src: "{{ stage_dir }}/championships/"
+        dest: "{{ store }}\\championships\\"
+
+    - name: Copy the new presets
+      win_copy:
+        src: "{{ stage_dir }}/presets/"
+        dest: "{{ store }}\\presets\\"
+
+    - name: Verify (each event has a preset with the SAME id -- the real join)
+      win_shell: |
+        $ids = @({% for id in deploy_ids %}"{{ id }}"{% if not loop.last %},{% endif %}{% endfor %})
+        $presetIds = @(Get-ChildItem (Join-Path "{{ store }}" "presets") -Filter *.json | ForEach-Object {
+          try { (Get-Content $_.FullName -Raw | ConvertFrom-Json).ID } catch { }
+        })
+        foreach ($id in $ids) {
+          $ch = Get-Content (Join-Path "{{ store }}" "championships\$id.json") -Raw | ConvertFrom-Json
+          $missing = @($ch.Events | Where-Object { $presetIds -notcontains $_.ID })
+          "{0}: events={1} eventsWithoutMatchingPreset={2}" -f $ch.Name, @($ch.Events).Count, $missing.Count
+        }
+      register: verres
+    - debug: var=verres.stdout_lines
+
+    - name: Start the manager service again
+      win_shell: |
+        Start-Service acc-server-manager
+        Start-Sleep -Seconds 10
+        "service: $((Get-Service acc-server-manager).Status); accServer: " + (@(Get-Process accServer -ErrorAction SilentlyContinue).Count)
+      register: startres
+    - debug: var=startres.stdout_lines

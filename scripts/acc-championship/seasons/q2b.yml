@@ -1,0 +1,36 @@
+# Monday Night Racing - Q2 B  (update-in-place: keeps the existing championship ID/URL)
+# Same calendar as q2a.yml; deploys over the existing empty championship 750c79c6-...
+championship:
+  id: "750c79c6-48d9-4c85-bd82-fe3ea72f51be"
+  name: "Monday Night Racing - Q2 B"
+  preset_name: "Monday Night Racing B"
+  description: "MNR GT3 championship. 8 rounds, 27 Jul - 14 Sep 2026."
+
+points:
+  places: [35, 34, 33, 32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21,
+           20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1]
+  pole_position: 0
+  best_lap: 0
+
+session_defaults:
+  practice:   {minutes: 240, day_of_weekend: 1}
+  qualifying: {minutes: 15,  day_of_weekend: 2}
+  race:       {minutes: 30,  day_of_weekend: 3}
+
+weather_defaults:
+  ambient_temp: 24
+  track_temp: 30
+  cloud_level: 0.05
+  rain: 0
+  weather_randomness: 4
+
+rounds:
+  - {track: silverstone,    hour_of_day: 21, race_minutes: 30}   # 27 Jul - Night
+  - {track: spa,            hour_of_day: 17, race_minutes: 30}   # 03 Aug - Late afternoon
+  - {track: hungaroring,    hour_of_day: 7,  race_minutes: 60}   # 10 Aug - Early morning
+  - {track: imola,          hour_of_day: 21, race_minutes: 30}   # 17 Aug - Night
+  - {track: mount_panorama, hour_of_day: 12, race_minutes: 30}   # 24 Aug - Midday
+  - {track: barcelona,      hour_of_day: 17, race_minutes: 60}   # 31 Aug - Late afternoon
+  - {track: donington,      hour_of_day: 14, race_minutes: 30,   # 07 Sep - Rain (time unspecified -> 14:00)
+     weather: {rain: 0.7, cloud_level: 0.9, weather_randomness: 5}}
+  - {track: nurburgring,    hour_of_day: 7,  race_minutes: 30}   # 14 Sep - Early morning (GP layout)
