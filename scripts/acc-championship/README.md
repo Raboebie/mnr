@@ -58,9 +58,15 @@ season: make an empty championship in the UI, export/note its ID, then `remap.py
 
 See `season.example.yml`. `seasons/q2a.yml` / `q2b.yml` are the live Q2 2026 calendar. Keys:
 `championship.id` (update-in-place target), `championship.preset_name` (the per-round event name),
+`championship.server` (which ACC server the schedule runs on — 0/1/2), `race_start_time`,
 `points.places`, `session_defaults` (FP/Q/R minutes + day-of-weekend), `weather_defaults`, and
-`rounds[]` with `track`, `hour_of_day` (applied to all sessions), `race_minutes`, and optional
-per-round `weather`.
+`rounds[]` with `track`, `hour_of_day` (in-sim time of day, applied to all sessions),
+`race_minutes`, optional per-round `weather`, and `date` (a Monday) for the real-world start.
+
+**Scheduling.** `remap.py` sets each round's server start time from `date` + `race_start_time`,
+writing `ScheduleEnabled: true` and `Schedules[<server>] = { ScheduledTime: <date>T<time> }` — the
+manager's own format (keyed by server index). `date` is the real-world clock the server
+auto-starts; it is independent of `hour_of_day` (the in-sim conditions).
 
 ## Deploy
 

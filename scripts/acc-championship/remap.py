@@ -112,6 +112,23 @@ def main():
                        ("rain", "rain"), ("weather_randomness", "weatherRandomness")]:
             if wk in weather:
                 rc[rk] = weather[wk]
+
+        # Real-world start schedule (independent of the in-sim hour_of_day). The manager keys
+        # Schedules by server index; the championship's `server` says which server it runs on.
+        # round `date` (a Monday) + season `race_start_time` -> the server auto-starts then.
+        sdate = rnd.get("date")
+        if sdate:
+            server_key = str(season.get("championship", {}).get("server", 0))
+            when = f"{sdate}T{season.get('race_start_time', '18:00:00+02:00')}"
+            preset["ScheduleEnabled"] = True
+            preset["Schedules"] = {server_key: {
+                "ScheduledTime": when,
+                "InitialScheduledTime": when,
+                "RecurrenceEnabled": False,
+                "RecurrenceRuleBase": "",
+                "RecurrenceRule": "",
+            }}
+
         preset["Updated"] = now
         out_presets.append(preset)
 

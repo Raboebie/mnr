@@ -116,6 +116,13 @@ reproduces this; the reliable path is to transform the manager's own files, pres
 Deploy with `ansible/deploy-acc-championships.yml` (stops the service, backs up, swaps, restarts).
 The store is read **at startup**, so a restart is required.
 
+**Round start times** live on the preset, not the championship: `ScheduleEnabled: true` plus
+`Schedules` — a dict **keyed by server index** (`"0"`, `"1"`, …) whose value has
+`ScheduledTime` / `InitialScheduledTime` (real-world clock, e.g. `2026-08-03T18:00:00+02:00`). So
+each championship's schedule is pinned to a specific ACC server (Q2 A → server 0, Q2 B → server 1
+for the 2026 season). This real-world start is separate from `RaceConfig.sessions[].hourOfDay`
+(the in-sim time of day). `remap.py` sets it from each round's `date` + `race_start_time`.
+
 ## Global look-and-feel: `store.json\manager.json`
 
 Holds `Name`, `Theme` (`auto`), `darkMode`, `CustomCSS` (the MNR green/orange theme, incl. the

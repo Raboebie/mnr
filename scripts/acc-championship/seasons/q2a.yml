@@ -4,7 +4,11 @@ championship:
   id: "54fb0677-adbf-4489-a9f6-e319f275cd92"
   name: "Monday Night Racing - Q2 A"
   preset_name: "Monday Night Racing A"
+  server: 0          # runs on ACC server_0 ("Monday Night Racing - A")
   description: "MNR GT3 championship. 8 rounds, 27 Jul - 14 Sep 2026."
+
+# Real-world clock the server auto-starts each round (each round's `date` is a Monday). SAST.
+race_start_time: "18:00:00+02:00"
 
 points:
   places: [35, 34, 33, 32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21,
@@ -29,12 +33,12 @@ weather_defaults:
 # hour_of_day applies to ALL sessions in the round. Time-of-day mapping:
 # Night=21, Late afternoon=17, Midday=12, Early morning=7.
 rounds:
-  - {track: silverstone,    hour_of_day: 21, race_minutes: 30}   # 27 Jul - Night
-  - {track: spa,            hour_of_day: 17, race_minutes: 30}   # 03 Aug - Late afternoon
-  - {track: hungaroring,    hour_of_day: 7,  race_minutes: 60}   # 10 Aug - Early morning
-  - {track: imola,          hour_of_day: 21, race_minutes: 30}   # 17 Aug - Night
-  - {track: mount_panorama, hour_of_day: 12, race_minutes: 30}   # 24 Aug - Midday
-  - {track: barcelona,      hour_of_day: 17, race_minutes: 60}   # 31 Aug - Late afternoon
-  - {track: donington,      hour_of_day: 14, race_minutes: 30,   # 07 Sep - Rain (time unspecified -> 14:00)
+  - {track: silverstone,    hour_of_day: 21, race_minutes: 30, date: "2026-07-27"}   # Night
+  - {track: spa,            hour_of_day: 17, race_minutes: 30, date: "2026-08-03"}   # Late afternoon
+  - {track: hungaroring,    hour_of_day: 7,  race_minutes: 60, date: "2026-08-10"}   # Early morning
+  - {track: imola,          hour_of_day: 21, race_minutes: 30, date: "2026-08-17"}   # Night
+  - {track: mount_panorama, hour_of_day: 12, race_minutes: 30, date: "2026-08-24"}   # Midday
+  - {track: barcelona,      hour_of_day: 17, race_minutes: 60, date: "2026-08-31"}   # Late afternoon
+  - {track: donington,      hour_of_day: 14, race_minutes: 30, date: "2026-09-07",   # Rain
      weather: {rain: 0.7, cloud_level: 0.9, weather_randomness: 5}}
-  - {track: nurburgring,    hour_of_day: 7,  race_minutes: 30}   # 14 Sep - Early morning (GP layout)
+  - {track: nurburgring,    hour_of_day: 7,  race_minutes: 30, date: "2026-09-14"}   # Early morning (GP layout)
