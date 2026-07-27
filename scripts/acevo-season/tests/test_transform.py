@@ -67,6 +67,7 @@ def test_build_seasondefinition_track_layout_hour_ms_per_session_no_stale_track(
         assert s["weather"]["initial_date_time"]["hour"] == 17
         assert s["specialization"]["base"]["session_duration_ms"] == expect_ms[sid]
     assert seen == {"0", "1", "2"}
+    assert "kyalami" not in json.dumps(out).lower()                # no stale slug anywhere, any case
 
 
 def test_build_seasondefinition_best_effort_weather():

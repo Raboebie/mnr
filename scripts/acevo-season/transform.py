@@ -50,14 +50,32 @@ def _apply_track(session: dict, track: str) -> None:
         folder_path     = "content\\tracks\\kyalami"
         file_path       = "content\\tracks\\kyalami\\kyalami.scene"
         track_data_path = "content\\tracks\\kyalami\\kyalami.track"
+
+    The template also embeds the old track slug throughout
+    scene.containers[] (e.g. "content\\tracks\\kyalami\\containers\\...").
+    Those are captured-track-specific asset paths, not derived from any
+    other field we already own, so they have to be fixed up by string
+    substitution: derive the OLD slug from the track_content_data this
+    session already has (before we overwrite it) using the same
+    _track_slug() rule, then swap old slug -> new slug in every
+    scene.containers[] entry (and scene.event_name, in case a future
+    template embeds the slug there too).
     """
+    scene = session["scene"]
+    tcd = scene["track_content_data"]
+    old_slug = _track_slug(tcd["name"])
+
     slug = _track_slug(track)
     folder = "content\\tracks\\" + slug
-    tcd = session["scene"]["track_content_data"]
     tcd["name"] = track
     tcd["folder_path"] = folder
     tcd["file_path"] = folder + "\\" + slug + ".scene"
     tcd["track_data_path"] = folder + "\\" + slug + ".track"
+
+    if old_slug != slug:
+        scene["containers"] = [c.replace(old_slug, slug) for c in scene["containers"]]
+        if "event_name" in scene and isinstance(scene["event_name"], str):
+            scene["event_name"] = scene["event_name"].replace(old_slug, slug)
 
 
 def build_serverconfig(template: dict, server: dict, passwords: dict) -> dict:
