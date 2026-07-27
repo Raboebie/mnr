@@ -396,9 +396,11 @@ session_defaults:
   qualifying: {minutes: 15}
   race:       {minutes: 30}
 
+# Weather vocabulary maps best-effort onto the real (nested) fields per FIELD_MAP.md.
+# No `track_temp` — AC EVO has no such field (game-derived). `rain` (0..1) drives
+# precipitation + initial_global_wetness; `weather_randomness` drives dynamic weather.
 weather_defaults:
   ambient_temp: 24
-  track_temp: 30
   cloud_level: 0.05
   rain: 0
   weather_randomness: 4
@@ -425,21 +427,28 @@ git commit -m "feat(acevo): season model + active-round selection"
 
 ### Task 4: Config transform
 
-Turns the captured templates + a season round + passwords into the final config dicts. Uses a generic dotted-path setter (fully unit-tested with synthetic data) plus a golden test against the real committed template.
+Turns the captured templates + a season round + passwords into the final config dicts. **The real schema (from Task 2's capture / `FIELD_MAP.md`) is deeply nested and per-session** — this task was revised after the capture. Read `scripts/acevo-season/FIELD_MAP.md` and the two committed templates before writing code; bind every exact path from FIELD_MAP, do not guess.
 
 **Files:**
 - Create: `scripts/acevo-season/transform.py`
 - Test: `scripts/acevo-season/tests/test_transform.py`
 
-**Interfaces:**
-- Consumes: `codec` (not directly), `FIELD_MAP.md` (the real dotted paths — bound as constants here).
-- Produces:
-  - `transform.set_path(obj: dict, path: str, value) -> None` (mutates in place; raises `KeyError` if an intermediate key is missing)
-  - `transform.build_serverconfig(template: dict, server: dict, passwords: dict) -> dict`
-  - `transform.build_seasondefinition(template: dict, round_cfg: dict, session_defaults: dict, weather_defaults: dict) -> dict`
-  - Both return a deep-copied, patched dict (template not mutated).
+**Real-schema facts you must honor (from FIELD_MAP.md):**
+- **serverconfig** top-level keys: `server_name`, `server_tcp_listener_port`, `server_tcp_internal_port`, `server_udp_listener_port`, `server_udp_internal_port` (all four ports = `server["game_port"]`), `server_http_port`, `max_players`, `results_path` (leave as-is), `driver_password` / `admin_password` / `spectator_password`. Cars live in **`allowed_cars_list_full`** — a **list of objects** `{"car_name": <str>, "ballast": 0, "restrictor": 0}`, NOT plain strings. Expand `server["cars"]` (a list of names) into that object shape (ballast/restrictor default 0).
+- **seasondefinition** config is **per-session**, nested at `event_map.<eid>.session_map.<sid>` (session ids are the strings `"0"`=Practice, `"1"`=Qualifying, `"2"`=Race). Iterate every event and every session. Per session set:
+  - track: `scene.track_content_data.name` **and** the sibling on-disk path fields (`folder_path`, `file_path`, `track_data_path`) — derive the new track's path strings by substituting into the pattern the captured **Kyalami** values show (read them from the template). The golden test asserts **no stale `"Kyalami"` remains anywhere**, which forces you to replace every track reference, not just `.name`.
+  - layout: `scene.track_layout_name`.
+  - time of day: `weather.initial_date_time.hour` = `round_cfg["hour_of_day"]`.
+  - duration: `specialization.base.session_duration_ms` = minutes × 60000 (Practice/Qualifying from `session_defaults`, Race from `round_cfg["race_minutes"]`).
+- **Weather — best-effort** (user chose this; the single captured sample is clear-weather so these are extrapolations to validate at the spike). Under each session's `weather.static_data.static_weather`: `mean_ambient_temperature_c` = `ambient_temp`; `cloud_coverage` = `cloud_level`; `precipitation` and `initial_global_wetness` = `rain`; `is_dynamic_weather` = `(weather_randomness > 0)`. Leave `weather_type` enum unchanged (the rain enum string is unknown — document this). Optionally scale `weather.spatial_noise_data.amplitude` by `weather_randomness` if present. Grip: set the numeric `dynamic_track_condition.initial_grip` from `round_cfg["initial_grip"]` if the season provides it; leave the `initial_grip` enum string. Document every best-effort choice in your report.
 
-- [ ] **Step 1: Write the failing tests (mechanism + golden)**
+**Interfaces (unchanged from the pre-revision plan — Task 5 depends on these signatures):**
+- `transform.set_path(obj: dict, path: str, value) -> None` (mutates in place; raises `KeyError` if an intermediate key is missing)
+- `transform.build_serverconfig(template: dict, server: dict, passwords: dict) -> dict`
+- `transform.build_seasondefinition(template: dict, round_cfg: dict, session_defaults: dict, weather_defaults: dict) -> dict`
+- Both builders return a deep-copied, patched dict (template not mutated). `server` has keys `name, game_port, http_port, max_players, cars`. `passwords` has keys `driver, admin, spectator`. `round_cfg` has `track, layout, hour_of_day, race_minutes` and optional `weather`, `initial_grip`. `weather_defaults` has `ambient_temp, cloud_level, rain, weather_randomness`.
+
+- [ ] **Step 1: Write the failing tests (mechanism + golden against the REAL template)**
 
 ```python
 # scripts/acevo-season/tests/test_transform.py
@@ -454,6 +463,15 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from transform import set_path, build_serverconfig, build_seasondefinition
 
+SC_TEMPLATE = json.loads((ROOT / "templates" / "serverconfig.template.json").read_text())
+SD_TEMPLATE = json.loads((ROOT / "templates" / "seasondefinition.template.json").read_text())
+
+
+def _all_sessions(sd):
+    for ev in sd["event_map"].values():
+        for sid, s in ev["session_map"].items():
+            yield sid, s
+
 
 def test_set_path_nested():
     obj = {"a": {"b": {"c": 1}}}
@@ -466,26 +484,58 @@ def test_set_path_missing_intermediate_raises():
         set_path({"a": {}}, "a.b.c", 1)
 
 
-def test_build_serverconfig_injects_passwords_and_leaves_template_untouched():
-    template = json.loads((ROOT / "templates" / "serverconfig.template.json").read_text())
+def test_build_serverconfig_ports_name_passwords_and_car_objects():
+    template = copy.deepcopy(SC_TEMPLATE)
     original = copy.deepcopy(template)
-    server = {"name": "TEST SERVER", "game_port": 34597, "http_port": 8080,
-              "max_players": 19, "cars": ["x"]}
-    passwords = {"driver": "d-secret", "admin": "a-secret", "spectator": "s-secret"}
+    server = {"name": "MNR TEST", "game_port": 34597, "http_port": 8080,
+              "max_players": 19, "cars": ["ferrari_296_gt3", "porsche_992_gt3"]}
+    passwords = {"driver": "d1", "admin": "a1", "spectator": "s1"}
     out = build_serverconfig(template, server, passwords)
-    assert template == original                       # template not mutated
-    dumped = json.dumps(out)
-    assert "d-secret" in dumped and "__DRIVER_PASSWORD__" not in dumped
-    assert "TEST SERVER" in dumped
+    assert template == original                                   # template not mutated
+    assert out["server_name"] == "MNR TEST"
+    assert out["server_tcp_listener_port"] == 34597 and out["server_tcp_internal_port"] == 34597
+    assert out["server_udp_listener_port"] == 34597 and out["server_udp_internal_port"] == 34597
+    assert out["driver_password"] == "d1" and out["admin_password"] == "a1" and out["spectator_password"] == "s1"
+    assert "__DRIVER_PASSWORD__" not in json.dumps(out)
+    cars = out["allowed_cars_list_full"]
+    assert isinstance(cars, list) and cars
+    assert all(isinstance(c, dict) and "car_name" in c for c in cars)
+    assert {c["car_name"] for c in cars} == {"ferrari_296_gt3", "porsche_992_gt3"}
 
 
-def test_build_seasondefinition_applies_round():
-    template = json.loads((ROOT / "templates" / "seasondefinition.template.json").read_text())
-    round_cfg = {"track": "spa", "layout": "gp", "hour_of_day": 17, "race_minutes": 30}
+def test_build_seasondefinition_track_layout_hour_ms_per_session_no_stale_track():
+    template = copy.deepcopy(SD_TEMPLATE)
+    original = copy.deepcopy(template)
+    round_cfg = {"track": "Spa", "layout": "GP", "hour_of_day": 17, "race_minutes": 30}
     session_defaults = {"practice": {"minutes": 240}, "qualifying": {"minutes": 15}, "race": {"minutes": 30}}
-    weather_defaults = {"ambient_temp": 24, "track_temp": 30, "cloud_level": 0.05, "rain": 0, "weather_randomness": 4}
+    weather_defaults = {"ambient_temp": 20, "cloud_level": 0.1, "rain": 0, "weather_randomness": 3}
     out = build_seasondefinition(template, round_cfg, session_defaults, weather_defaults)
-    assert "spa" in json.dumps(out)
+    assert template == original                                   # template not mutated
+    assert "Kyalami" not in json.dumps(out)                       # every track reference replaced
+    expect_ms = {"0": 240 * 60000, "1": 15 * 60000, "2": 30 * 60000}
+    seen = set()
+    for sid, s in _all_sessions(out):
+        seen.add(sid)
+        assert s["scene"]["track_content_data"]["name"] == "Spa"
+        assert s["scene"]["track_layout_name"] == "GP"
+        assert s["weather"]["initial_date_time"]["hour"] == 17
+        assert s["specialization"]["base"]["session_duration_ms"] == expect_ms[sid]
+    assert seen == {"0", "1", "2"}
+
+
+def test_build_seasondefinition_best_effort_weather():
+    template = copy.deepcopy(SD_TEMPLATE)
+    round_cfg = {"track": "Spa", "layout": "GP", "hour_of_day": 17, "race_minutes": 30,
+                 "weather": {"rain": 0.6, "cloud_level": 0.8}}
+    session_defaults = {"practice": {"minutes": 240}, "qualifying": {"minutes": 15}, "race": {"minutes": 30}}
+    weather_defaults = {"ambient_temp": 26, "cloud_level": 0.1, "rain": 0, "weather_randomness": 5}
+    out = build_seasondefinition(template, round_cfg, session_defaults, weather_defaults)
+    for _sid, s in _all_sessions(out):
+        sw = s["weather"]["static_data"]["static_weather"]
+        assert sw["mean_ambient_temperature_c"] == 26          # from weather_defaults
+        assert sw["cloud_coverage"] == 0.8                     # round override wins
+        assert sw["precipitation"] == 0.6                      # rain
+        assert sw["is_dynamic_weather"] is True                # randomness 5 > 0
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -495,108 +545,34 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'transform'`.
 
 - [ ] **Step 3: Write `transform.py`**
 
-Bind the `*_PATH` constants below to the **real** dotted paths recorded in `FIELD_MAP.md` (Task 2). The logic is complete; only the path strings are data from the capture. Where a value lives inside a per-session list, iterate the sessions list at `SESSIONS_PATH` and set the per-session key.
+Read `FIELD_MAP.md` and both templates first. Implement to the facts above and the golden tests. Structure it as: a `set_path` helper (below, complete), a small per-session iterator, an `_apply_track` helper that replaces name + all path fields (derive the pattern from the captured Kyalami values you read in the template), and the two `build_*` functions. Bind every path from FIELD_MAP — do not invent keys. `set_path` is fully specified; the rest you write against the real template:
 
 ```python
-# scripts/acevo-season/transform.py
-import copy
-
-# --- bound from FIELD_MAP.md (Task 2). Confirm each against the captured template. ---
-SC_NAME_PATH = "serverName"
-SC_TCP_LISTENER_PATH = "server_tcp_listener_port"
-SC_TCP_INTERNAL_PATH = "server_tcp_internal_port"
-SC_HTTP_PORT_PATH = "server_http_port"
-SC_MAX_PLAYERS_PATH = "max_players"
-SC_CARS_PATH = "allowed_cars"
-SC_DRIVER_PW_PATH = "driver_password"
-SC_ADMIN_PW_PATH = "admin_password"
-SC_SPECTATOR_PW_PATH = "spectator_password"
-
-SD_TRACK_PATH = "track"
-SD_LAYOUT_PATH = "layout"
-SD_HOUR_PATH = "hour_of_day"
-SD_SESSIONS_PATH = "sessions"          # a list
-SD_SESSION_TYPE_KEY = "type"           # per-session: "practice"/"qualify"/"race" (confirm values)
-SD_SESSION_DURATION_KEY = "duration_minutes"
-SD_AMBIENT_PATH = "ambient_temp"
-SD_TRACK_TEMP_PATH = "track_temp"
-SD_CLOUD_PATH = "cloud_level"
-SD_RAIN_PATH = "rain"
-SD_RANDOMNESS_PATH = "weather_randomness"
-SD_GRIP_PATH = "initial_grip"          # optional; set only when the season specifies it
-# ------------------------------------------------------------------------------------
-
-
 def set_path(obj: dict, path: str, value) -> None:
     keys = path.split(".")
     cur = obj
     for k in keys[:-1]:
         cur = cur[k]        # raises KeyError if an intermediate key is missing
     cur[keys[-1]] = value
-
-
-def build_serverconfig(template: dict, server: dict, passwords: dict) -> dict:
-    out = copy.deepcopy(template)
-    set_path(out, SC_NAME_PATH, server["name"])
-    set_path(out, SC_TCP_LISTENER_PATH, server["game_port"])
-    set_path(out, SC_TCP_INTERNAL_PATH, server["game_port"])
-    set_path(out, SC_HTTP_PORT_PATH, server["http_port"])
-    set_path(out, SC_MAX_PLAYERS_PATH, server["max_players"])
-    set_path(out, SC_CARS_PATH, list(server["cars"]))
-    set_path(out, SC_DRIVER_PW_PATH, passwords["driver"])
-    set_path(out, SC_ADMIN_PW_PATH, passwords["admin"])
-    set_path(out, SC_SPECTATOR_PW_PATH, passwords["spectator"])
-    return out
-
-
-def build_seasondefinition(template: dict, round_cfg: dict,
-                           session_defaults: dict, weather_defaults: dict) -> dict:
-    out = copy.deepcopy(template)
-    set_path(out, SD_TRACK_PATH, round_cfg["track"])
-    if "layout" in round_cfg:
-        set_path(out, SD_LAYOUT_PATH, round_cfg["layout"])
-    set_path(out, SD_HOUR_PATH, round_cfg["hour_of_day"])
-
-    weather = dict(weather_defaults)
-    weather.update(round_cfg.get("weather", {}))
-    set_path(out, SD_AMBIENT_PATH, weather["ambient_temp"])
-    set_path(out, SD_TRACK_TEMP_PATH, weather["track_temp"])
-    set_path(out, SD_CLOUD_PATH, weather["cloud_level"])
-    set_path(out, SD_RAIN_PATH, weather["rain"])
-    set_path(out, SD_RANDOMNESS_PATH, weather["weather_randomness"])
-
-    # initial grip: optional — round overrides weather_defaults; skip entirely if unset
-    grip = round_cfg.get("initial_grip", weather_defaults.get("initial_grip"))
-    if grip is not None:
-        set_path(out, SD_GRIP_PATH, grip)
-
-    # per-session durations: race uses round_cfg.race_minutes, others use session_defaults
-    minutes_by_type = {
-        "practice": session_defaults["practice"]["minutes"],
-        "qualify": session_defaults["qualifying"]["minutes"],
-        "race": round_cfg.get("race_minutes", session_defaults["race"]["minutes"]),
-    }
-    sessions = out
-    for k in SD_SESSIONS_PATH.split("."):
-        sessions = sessions[k]
-    for s in sessions:
-        stype = s.get(SD_SESSION_TYPE_KEY)
-        if stype in minutes_by_type:
-            s[SD_SESSION_DURATION_KEY] = minutes_by_type[stype]
-    return out
 ```
+
+Requirements the code must meet (the golden tests enforce most of these):
+- `build_serverconfig`: deep-copy; set `server_name`, all four port fields (= `game_port`), `server_http_port`, `max_players`, the three passwords; replace `allowed_cars_list_full` with `[{"car_name": n, "ballast": 0, "restrictor": 0} for n in server["cars"]]`. Do not mutate the input template.
+- `build_seasondefinition`: deep-copy; iterate `event_map.*.session_map.*`; per session set track (name + path fields via `_apply_track`, leaving **no** stale `"Kyalami"`), layout, `weather.initial_date_time.hour`, and `specialization.base.session_duration_ms` (minutes×60000; Race = session id `"2"` uses `round_cfg["race_minutes"]`, `"0"`→practice, `"1"`→qualifying from `session_defaults`); apply best-effort weather (`mean_ambient_temperature_c`, `cloud_coverage`, `precipitation`, `initial_global_wetness`, `is_dynamic_weather`) with `round_cfg["weather"]` overriding `weather_defaults`; set numeric `dynamic_track_condition.initial_grip` if `round_cfg` provides `initial_grip`. Do not mutate the input template.
 
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `cd scripts/acevo-season && python3 -m pytest tests/test_transform.py -v`
-Expected: PASS (4 passed). If a golden test fails, the `*_PATH` constants don't match the captured template — fix them from `FIELD_MAP.md`, do not weaken the test.
+Expected: PASS (5 passed). If a golden test fails, your paths don't match the real template — fix the paths from `FIELD_MAP.md`, **do not weaken the test** (in particular the "no stale Kyalami" and per-session ms assertions).
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Commit and report extrapolations**
 
 ```bash
 git add scripts/acevo-season/transform.py scripts/acevo-season/tests/test_transform.py
-git commit -m "feat(acevo): config transform (template + round + passwords -> config)"
+git commit -m "feat(acevo): config transform (real per-session schema, best-effort weather)"
 ```
+
+In your report, list every extrapolation/best-effort decision (the derived track-path pattern + casing assumption, which ambient/rain/randomness fields you targeted, what you left unchanged like `weather_type`), and mark the task **DONE_WITH_CONCERNS** — these get validated at the Task 6 spike.
 
 ---
 
@@ -1104,5 +1080,6 @@ git commit -m "docs(acevo): season-automation README + server/CLAUDE docs + real
 ## Notes / deviations from the spec
 
 - **Round-trip test is semantic, not byte-identical** (see Global Constraints). The spec's "byte-identical" wording is superseded — the server only needs our blob to decode to the right JSON, and matching the GUI's .NET JSON + zlib output byte-for-byte is neither feasible nor necessary.
-- **`transform.py` path constants** are bound from `FIELD_MAP.md` (produced in Task 2 from the real captured config). The transform *logic* is complete and unit-tested against synthetic data; the golden tests bind it to the real template. This is the one place the plan is parameterized on discovery, because the AC EVO config schema is proprietary and only knowable from a live decode.
+- **Task 4 was revised after the Task 2 capture (2026-07-27).** The real schema is deeply nested and per-session (`event_map.<eid>.session_map.<sid>`), durations are milliseconds, cars are objects (`allowed_cars_list_full`), and there are four port fields. Task 4's paths bind from `FIELD_MAP.md` and the golden tests run against the real committed template (not synthetic).
+- **Weather is best-effort (user decision, 2026-07-27).** The single captured sample is clear-weather, so ambient/rain/randomness fields and the track's on-disk **path** encoding for *other* tracks are extrapolations. They are wired to the best-guess FIELD_MAP paths and **validated at the Task 6 spike** (which launches a different track, silverstone, so it exercises the track-path extrapolation). `weather_type` enum is left unchanged (rain enum string unknown). Task 4 reports these as DONE_WITH_CONCERNS.
 - **Task 6 is a hard gate.** If the exe can't run headless without the GUI, Tasks 7–8 change to a config-gen-only deliverable (generate blobs + a launch `.bat`, human runs the GUI/command). Everything in Tasks 1–5 stays valid either way.
