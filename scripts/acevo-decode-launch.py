@@ -15,27 +15,20 @@ Usage:
 """
 
 import argparse
-import base64
 import json
+import os
 import re
-import struct
 import sys
-import zlib
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "acevo-season"))
+from codec import decode as _decode  # noqa: E402
 
 # -serverconfig AAACoXic...  /  -seasondefinition AAACvHic...
 ARG_RE = re.compile(r"-(serverconfig|seasondefinition)\s+([A-Za-z0-9+/=]+)")
 
 
 def decode(blob: str):
-    raw = base64.b64decode(blob)
-    declared = struct.unpack(">I", raw[:4])[0]
-    data = zlib.decompress(raw[4:])
-    if len(data) != declared:
-        print(
-            f"warning: length prefix says {declared}, got {len(data)}",
-            file=sys.stderr,
-        )
-    return json.loads(data)
+    return _decode(blob)
 
 
 def emit(name: str, blob: str) -> None:
