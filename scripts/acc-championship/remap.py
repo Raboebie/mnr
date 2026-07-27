@@ -37,6 +37,27 @@ def now_iso():
     return datetime.now(timezone.utc).astimezone().isoformat()
 
 
+def apply_pit_rules(event_rules, race_minutes):
+    """Set the round's mandatory-pitstop rules by race length, in place.
+
+    - race < 60 min (i.e. the 30 min rounds): NO mandatory pitstop.
+    - race >= 60 min: exactly one mandatory pitstop, **fuel only** — refuelling
+      required, tyre change and driver swap NOT required.
+    """
+    if race_minutes >= 60:
+        event_rules["mandatoryPitstopCount"] = 1
+        event_rules["isRefuellingAllowedInRace"] = True
+        event_rules["isMandatoryPitstopRefuellingRequired"] = True
+        event_rules["isMandatoryPitstopTyreChangeRequired"] = False
+        event_rules["isMandatoryPitstopSwapDriverRequired"] = False
+    else:
+        event_rules["mandatoryPitstopCount"] = 0
+        event_rules["isMandatoryPitstopRefuellingRequired"] = False
+        event_rules["isMandatoryPitstopTyreChangeRequired"] = False
+        event_rules["isMandatoryPitstopSwapDriverRequired"] = False
+    return event_rules
+
+
 def shared_session_uuids(presets):
     """The FP/Q/R session UUIDs are shared across the championship; pull them from any preset
     that has all three."""
@@ -113,6 +134,10 @@ def main():
             if wk in weather:
                 rc[rk] = weather[wk]
 
+        # Mandatory pitstop by race length: 30 min -> none, 60 min -> one, fuel only.
+        race_min = int(rnd["race_minutes"]) if "race_minutes" in rnd else int(sdef.get("race", {}).get("minutes", 0))
+        apply_pit_rules(preset["Data"]["EventRules"], race_min)
+
         # Real-world start schedule (independent of the in-sim hour_of_day). The manager keys
         # Schedules by server index; the championship's `server` says which server it runs on.
         # round `date` (a Monday) + season `race_start_time` -> the server auto-starts then.
@@ -144,8 +169,9 @@ def main():
     for i, (event, rnd, p) in enumerate(zip(champ["Events"], rounds, out_presets), 1):
         rc = p["Data"]["RaceConfig"]
         r = next(s for s in rc["sessions"] if s["sessionType"] == "R")
+        pit = "pit:fuel" if p["Data"]["EventRules"]["mandatoryPitstopCount"] else "pit:none"
         print(f"  R{i} evt={event['ID'][:8]} {rc['track']:<15} hour={r['hourOfDay']:>2} "
-              f"race={r['sessionDurationMinutes']}m rain={rc['rain']} cloud={rc['cloudLevel']}")
+              f"race={r['sessionDurationMinutes']}m rain={rc['rain']} cloud={rc['cloudLevel']} {pit}")
 
 
 if __name__ == "__main__":
