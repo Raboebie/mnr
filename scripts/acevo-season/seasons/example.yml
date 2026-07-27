@@ -1,0 +1,28 @@
+# Worked example. Track/layout/weather key names mirror FIELD_MAP.md.
+server:
+  name: "MNR | Monday Night Racing"
+  game_port: 34597
+  http_port: 8080
+  max_players: 19
+  cars: [ferrari_296_gt3, porsche_992_gt3]
+
+race_start_time: "18:00:00+02:00"
+
+session_defaults:
+  practice:   {minutes: 240}
+  qualifying: {minutes: 15}
+  race:       {minutes: 30}
+
+# Weather vocabulary maps best-effort onto the real (nested) fields per FIELD_MAP.md.
+# No `track_temp` — AC EVO has no such field (game-derived). `rain` (0..1) drives
+# precipitation + initial_global_wetness; `weather_randomness` drives dynamic weather.
+weather_defaults:
+  ambient_temp: 24
+  cloud_level: 0.05
+  rain: 0
+  weather_randomness: 4
+
+rounds:
+  - {track: silverstone, layout: gp, hour_of_day: 21, race_minutes: 30, date: "2026-07-27"}
+  - {track: spa,         layout: gp, hour_of_day: 17, race_minutes: 30, date: "2026-08-03"}
+  - {track: imola,       layout: gp, hour_of_day: 7,  race_minutes: 60, date: "2026-08-10"}
