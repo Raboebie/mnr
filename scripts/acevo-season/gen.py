@@ -38,6 +38,9 @@ def main() -> int:
         print(data["rounds"].index(ar) + 1)
         return 0
 
+    if not args.out:
+        ap.error("--out is required unless --active-round")
+
     tdir = Path(args.templates)
     sc_template = json.loads((tdir / "serverconfig.template.json").read_text())
     sd_template = json.loads((tdir / "seasondefinition.template.json").read_text())

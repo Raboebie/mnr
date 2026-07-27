@@ -22,8 +22,10 @@ def load_season(path: str) -> dict:
                 raise SeasonError(f"round {i} missing '{key}'")
         try:
             datetime.date.fromisoformat(r["date"])
-        except ValueError as exc:
-            raise SeasonError(f"round {i} bad date: {exc}") from exc
+        except (ValueError, TypeError) as exc:
+            # TypeError: an unquoted YAML date scalar arrives as a datetime.date,
+            # not a str — surface it as a clean SeasonError like a bad string does.
+            raise SeasonError(f"round {i} bad date (quote it as a string): {exc}") from exc
     return data
 
 
