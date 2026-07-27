@@ -34,7 +34,13 @@ events are sitting in the championship file (which is why its name/points still 
 
 Rewrites the schedule of a championship the manager already has, transforming its own files in
 place: **keeps every event ID, preset ID, and metaData**, changes only track / weather / time /
-race-length. Because the manager already recognises those IDs, the events keep rendering.
+race-length / pitstop rules. Because the manager already recognises those IDs, the events keep
+rendering.
+
+**Mandatory pitstops are derived from race length** (in each preset's `Data.EventRules`): a **30 min
+race has no mandatory pitstop**; a **60 min race has exactly one, fuel only** (refuelling required,
+no tyre change, no driver swap). Set by `apply_pit_rules()` from each round's `race_minutes` — no
+season-file key needed.
 
 ```bash
 python3 remap.py \
