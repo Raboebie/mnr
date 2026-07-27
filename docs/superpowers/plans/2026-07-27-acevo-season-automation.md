@@ -1091,3 +1091,33 @@ git commit -m "docs(acevo): season-automation README + server/CLAUDE docs + real
 - **Task 4 was revised after the Task 2 capture (2026-07-27).** The real schema is deeply nested and per-session (`event_map.<eid>.session_map.<sid>`), durations are milliseconds, cars are objects (`allowed_cars_list_full`), and there are four port fields. Task 4's paths bind from `FIELD_MAP.md` and the golden tests run against the real committed template (not synthetic).
 - **Weather is best-effort (user decision, 2026-07-27).** The single captured sample is clear-weather, so ambient/rain/randomness fields and the track's on-disk **path** encoding for *other* tracks are extrapolations. They are wired to the best-guess FIELD_MAP paths and **validated at the Task 6 spike** (which launches a different track, silverstone, so it exercises the track-path extrapolation). `weather_type` enum is left unchanged (rain enum string unknown). Task 4 reports these as DONE_WITH_CONCERNS.
 - **Task 6 is a hard gate.** If the exe can't run headless without the GUI, Tasks 7–8 change to a config-gen-only deliverable (generate blobs + a launch `.bat`, human runs the GUI/command). Everything in Tasks 1–5 stays valid either way.
+
+---
+
+## Execution status — PAUSED 2026-07-27
+
+Executed with subagent-driven-development on branch `feat/acevo-season-automation`.
+
+**Done — the offline toolkit (Tasks 1–5), all reviewed, 16 tests passing:**
+
+| Task | Commit(s) | Delivered |
+|---|---|---|
+| 1 Codec | `1d406bb` | `scripts/acevo-season/codec.py` (encode/decode); decoder CLI refactored onto it |
+| 2 Capture | `e7968be`, `10aa256` | Secret-free `templates/{serverconfig,seasondefinition}.template.json`, `FIELD_MAP.md` (real nested paths + documented ambiguities), decode fixture, `vault_acevo_*_password` in the vault |
+| 3 Season model | `d0226c7` | `season.py` (`load_season`, `active_round`), `seasons/example.yml` |
+| 4 Transform | `ebd868e`, fix `fc55508` | `transform.py` — real per-session nested schema, ms durations, car-objects, four ports, best-effort weather, complete track-slug replacement (incl. `scene.containers[]`) |
+| 5 gen.py | `69539fb` | `gen.py` CLI (season → `serverconfig.blob` + `round-NN.blob` + `manifest.json`); generated `*.blob` gitignored |
+
+**Not done — deferred to a future OFF-PEAK session (NOT a Monday race window):**
+- **Task 6 — validation spike (HARD GATE).** Direct-launch `AssettoCorsaEVOServer.exe` with a generated blob pair, GUI bypassed; confirm it boots, binds 34597, registers to the Kunos lobby, accepts passwords. Paused because 2026-07-27 was a Monday race evening and starting/stopping a server instance could collide with a live race. **Tasks 7–8 are gated on this passing.**
+- **Task 7 — NSSM service + wrapper + `deploy-acevo-service.yml`.**
+- **Task 8 — `rotate.ps1` + `AcevoRoundRotate` (05:00) + `deploy-acevo-season.yml`.**
+- **Task 9 — docs (`acevo-server.md`, `CLAUDE.md`) + real season file.**
+
+**Concerns carried forward to the Task 6 spike (must validate against a real second track / dynamic-weather sample):**
+- Track-slug derivation is `name.lower()` from a single sample (Kyalami). Breaks for multi-word/punctuated tracks (e.g. `Spa-Francorchamps`, `Watkins Glen`) — needs a slug override map, confirmed against a real generated track load.
+- Weather is **best-effort** (user decision): `mean_ambient_temperature_c`, `cloud_coverage`, `precipitation` + `initial_global_wetness`, `is_dynamic_weather`. Left unchanged: `weather_type` enum (rain string unknown) and the `initial_grip` enum (only numeric grip set). All extrapolated from one clear-weather snapshot.
+
+**Minor findings logged for the eventual final review:** `codec.decode` raises `struct.error` (not `ValueError`) on a <4-byte blob; `season.active_round` parses each date twice; an unquoted-date YAML scalar would raise `TypeError` not `SeasonError`; `gen.py --out` isn't `required=True`.
+
+**To resume:** bring the VPN up at an off-peak, non-Monday-race time; start at Task 6 in this plan. If the spike PASSES → Tasks 7→8→9. If it FAILS (exe needs the GUI) → fall back to the config-gen-only deliverable noted above. The final whole-branch review + merge of Tasks 1–5 is still pending (branch not yet merged).
