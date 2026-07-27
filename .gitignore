@@ -4,3 +4,8 @@ ansible/.vault_password
 .claude/
 __pycache__/
 *.pyc
+
+# AC EVO generated launch blobs contain plaintext passwords — never commit
+scripts/acevo-season/**/*.blob
+!scripts/acevo-season/tests/fixtures/*.blob
+scripts/acevo-season/out/
