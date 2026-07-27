@@ -34,3 +34,9 @@ def test_decode_rejects_length_mismatch():
     bad = base64.b64encode(struct.pack(">I", len(data) + 5) + zlib.compress(data)).decode("ascii")
     with pytest.raises(ValueError):
         decode(bad)
+
+
+def test_decode_real_captured_blob():
+    blob = (Path(__file__).parent / "fixtures" / "seasondefinition.sample.blob").read_text().strip()
+    obj = decode(blob)
+    assert isinstance(obj, dict) and obj  # non-empty dict

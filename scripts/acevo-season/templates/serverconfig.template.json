@@ -1,0 +1,34 @@
+{
+  "server_tcp_listener_port": 34597,
+  "server_udp_listener_port": 34597,
+  "server_tcp_internal_port": 34597,
+  "server_udp_internal_port": 34597,
+  "server_http_port": 8080,
+  "server_name": "MNR | Monday Night Racing",
+  "launch_path": "",
+  "netcode_update_interval": 55,
+  "driver_password": "__DRIVER_PASSWORD__",
+  "spectator_password": "__SPECTATOR_PASSWORD__",
+  "max_players": 20,
+  "allowed_cars_list_full": [
+    {
+      "car_name": "preset_dalexp_mech_1",
+      "ballast": 0,
+      "restrictor": 0
+    }
+  ],
+  "type": "MultiplayerServerListSessionType_RANKED",
+  "cycle": true,
+  "admin_password": "__ADMIN_PASSWORD__",
+  "pi_min": 0,
+  "pi_max": 0,
+  "property_1": [],
+  "property_2": [],
+  "property_3": [],
+  "entry_list_server_url": "",
+  "results_post_url": "",
+  "token": "",
+  "entry_list_path": "",
+  "results_path": "C:\\Users\\MNR\\Desktop\\mnr\\ACEvo_Latest\\results\\",
+  "tuning_type": "TuningAllowed"
+}
