@@ -1,28 +1,30 @@
-# Worked example. Track/layout/weather key names mirror FIELD_MAP.md.
+# Worked example. Track slugs come from tracks.json (the server's own event list
+# of the 35 valid AC EVO tracks). Weather/grip use the game's enums, not numbers.
 server:
   name: "MNR | Monday Night Racing"
   game_port: 34597
   http_port: 8080
   max_players: 19
-  cars: [ferrari_296_gt3, porsche_992_gt3]
+  # cars omitted -> keep the captured serverconfig's real car list.
 
-race_start_time: "18:00:00+02:00"
-
+# Non-race session lengths (minutes). Race length is per round (race_minutes).
+# warmup: 0 disables it.
 session_defaults:
-  practice:   {minutes: 240}
-  qualifying: {minutes: 15}
-  race:       {minutes: 30}
+  practice: {minutes: 10}
+  qualify:  {minutes: 10}
+  warmup:   {minutes: 0}
 
-# Weather vocabulary maps best-effort onto the real (nested) fields per FIELD_MAP.md.
-# No `track_temp` — AC EVO has no such field (game-derived). `rain` (0..1) drives
-# precipitation + initial_global_wetness; `weather_randomness` drives dynamic weather.
+# Weather is enum-based (validated schema), not temps/percentages.
+# type: clear | scattered clouds | broken clouds | overcast | drizzle | rain | heavy rain | damp
+# behaviour: static | dynamic     grip: green | fast | optimum
 weather_defaults:
-  ambient_temp: 24
-  cloud_level: 0.05
-  rain: 0
-  weather_randomness: 4
+  type: clear
+  behaviour: static
+  grip: green
 
+# hour_of_day applies to all sessions. Each round's track is a tracks.json slug.
 rounds:
-  - {track: silverstone, layout: gp, hour_of_day: 21, race_minutes: 30, date: "2026-07-27"}
-  - {track: spa,         layout: gp, hour_of_day: 17, race_minutes: 30, date: "2026-08-03"}
-  - {track: imola,       layout: gp, hour_of_day: 7,  race_minutes: 60, date: "2026-08-10"}
+  - {track: kyalami_gp, hour_of_day: 12, race_minutes: 30, date: "2026-07-27"}
+  - {track: spa_gp,     hour_of_day: 17, race_minutes: 30, date: "2026-08-03"}
+  - {track: imola_gp,   hour_of_day: 9,  race_minutes: 60, date: "2026-08-10",
+     weather: {type: overcast}}

@@ -1,5 +1,14 @@
 # AC EVO config field map (paths confirmed against captured live config)
 
+> **SUPERSEDED for seasondefinition (2026-07-27).** The `seasondefinition` section
+> below describes the server's *internal/expanded* log representation, which the
+> game's input parser REJECTS. The real `-seasondefinition` input is the flat
+> `season_doc` schema (game_type / game_config / event / weather_type /
+> weather_behaviour / initial_grip / export_json) — built by `transform.py` and
+> validated live on 2026-07-27 (server boots + registers to the Kunos lobby).
+> Schema source: github.com/zino1337/acevo-server. The `serverconfig` section
+> below is still accurate.
+
 ## Source of the capture
 
 The `AssettoCorsaEVOServer.exe` process was **not running** on `mnr-race` at
