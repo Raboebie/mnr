@@ -43,7 +43,7 @@ def main() -> int:
 
     tdir = Path(args.templates)
     sc_template = json.loads((tdir / "serverconfig.template.json").read_text())
-    sd_template = json.loads((tdir / "seasondefinition.template.json").read_text())
+    tracks = json.loads((HERE / "tracks.json").read_text())
 
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -53,8 +53,8 @@ def main() -> int:
 
     manifest = []
     for i, r in enumerate(data["rounds"], 1):
-        sd = build_seasondefinition(sd_template, r, data["session_defaults"],
-                                    data.get("weather_defaults", {}))
+        sd = build_seasondefinition(r, data["session_defaults"],
+                                    data.get("weather_defaults", {}), tracks)
         name = f"round-{i:02d}.blob"
         (out / name).write_text(encode(sd))
         manifest.append({"round": i, "date": r["date"], "blob": name})

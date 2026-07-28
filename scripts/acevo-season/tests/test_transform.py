@@ -10,13 +10,9 @@ sys.path.insert(0, str(ROOT))
 from transform import set_path, build_serverconfig, build_seasondefinition
 
 SC_TEMPLATE = json.loads((ROOT / "templates" / "serverconfig.template.json").read_text())
-SD_TEMPLATE = json.loads((ROOT / "templates" / "seasondefinition.template.json").read_text())
-
-
-def _all_sessions(sd):
-    for ev in sd["event_map"].values():
-        for sid, s in ev["session_map"].items():
-            yield sid, s
+TRACKS = json.loads((ROOT / "tracks.json").read_text())
+SD = {"practice": {"minutes": 10}, "qualify": {"minutes": 10}, "warmup": {"minutes": 0}}
+WD = {"type": "clear", "behaviour": "static", "grip": "green"}
 
 
 def test_set_path_nested():
@@ -44,42 +40,52 @@ def test_build_serverconfig_ports_name_passwords_and_car_objects():
     assert out["driver_password"] == "d1" and out["admin_password"] == "a1" and out["spectator_password"] == "s1"
     assert "__DRIVER_PASSWORD__" not in json.dumps(out)
     cars = out["allowed_cars_list_full"]
-    assert isinstance(cars, list) and cars
-    assert all(isinstance(c, dict) and "car_name" in c for c in cars)
     assert {c["car_name"] for c in cars} == {"ferrari_296_gt3", "porsche_992_gt3"}
 
 
-def test_build_seasondefinition_track_layout_hour_ms_per_session_no_stale_track():
-    template = copy.deepcopy(SD_TEMPLATE)
-    original = copy.deepcopy(template)
-    round_cfg = {"track": "Spa", "layout": "GP", "hour_of_day": 17, "race_minutes": 30}
-    session_defaults = {"practice": {"minutes": 240}, "qualifying": {"minutes": 15}, "race": {"minutes": 30}}
-    weather_defaults = {"ambient_temp": 20, "cloud_level": 0.1, "rain": 0, "weather_randomness": 3}
-    out = build_seasondefinition(template, round_cfg, session_defaults, weather_defaults)
-    assert template == original                                   # template not mutated
-    assert "Kyalami" not in json.dumps(out)                       # every track reference replaced
-    expect_ms = {"0": 240 * 60000, "1": 15 * 60000, "2": 30 * 60000}
-    seen = set()
-    for sid, s in _all_sessions(out):
-        seen.add(sid)
-        assert s["scene"]["track_content_data"]["name"] == "Spa"
-        assert s["scene"]["track_layout_name"] == "GP"
-        assert s["weather"]["initial_date_time"]["hour"] == 17
-        assert s["specialization"]["base"]["session_duration_ms"] == expect_ms[sid]
-    assert seen == {"0", "1", "2"}
-    assert "kyalami" not in json.dumps(out).lower()                # no stale slug anywhere, any case
+def test_build_serverconfig_keeps_template_cars_when_omitted():
+    template = copy.deepcopy(SC_TEMPLATE)
+    orig_cars = copy.deepcopy(template["allowed_cars_list_full"])
+    server = {"name": "x", "game_port": 34597, "http_port": 8080, "max_players": 19}
+    out = build_serverconfig(template, server, {"driver": "d", "admin": "a", "spectator": "s"})
+    assert out["allowed_cars_list_full"] == orig_cars             # captured list preserved
 
 
-def test_build_seasondefinition_best_effort_weather():
-    template = copy.deepcopy(SD_TEMPLATE)
-    round_cfg = {"track": "Spa", "layout": "GP", "hour_of_day": 17, "race_minutes": 30,
-                 "weather": {"rain": 0.6, "cloud_level": 0.8}}
-    session_defaults = {"practice": {"minutes": 240}, "qualifying": {"minutes": 15}, "race": {"minutes": 30}}
-    weather_defaults = {"ambient_temp": 26, "cloud_level": 0.1, "rain": 0, "weather_randomness": 5}
-    out = build_seasondefinition(template, round_cfg, session_defaults, weather_defaults)
-    for _sid, s in _all_sessions(out):
-        sw = s["weather"]["static_data"]["static_weather"]
-        assert sw["mean_ambient_temperature_c"] == 26          # from weather_defaults
-        assert sw["cloud_coverage"] == 0.8                     # round override wins
-        assert sw["precipitation"] == 0.6                      # rain
-        assert sw["is_dynamic_weather"] is True                # randomness 5 > 0
+def test_build_seasondefinition_kyalami_gp_matches_validated_schema():
+    r = {"track": "kyalami_gp", "hour_of_day": 12, "race_minutes": 30}
+    out = build_seasondefinition(r, SD, WD, TRACKS)
+    assert out["game_type"] == "GameModeType_RACE_WEEKEND"
+    assert out["event"] == {"track": "Kyalami", "layout": "GP", "event_name": "GP Race",
+                            "track_length": 4522, "max_pit_slot": 20}
+    gc = out["game_config"]
+    assert gc["race_duration"] == 30 * 60                         # seconds, from race_minutes
+    assert gc["practice_duration"] == 10 * 60 and gc["qualify_duration"] == 10 * 60
+    assert gc["warmup_duration"] == 0
+    assert gc["race_duration_type"] == "GameModeSelectionDuration_TIME"
+    assert gc["race_time_of_day"]["hour"] == 12 and gc["practice_time_of_day"]["hour"] == 12
+    assert out["weather_type"] == "GameModeSelectionWeatherType_CLEAR"
+    assert out["weather_behaviour"] == "GameModeSelectionWeatherBehaviour_STATIC"
+    assert out["initial_grip"] == "InitialGrip_GREEN"
+    assert out["export_json"] is False
+
+
+def test_round_weather_and_grip_override():
+    r = {"track": "spa_gp", "hour_of_day": 17, "race_minutes": 60,
+         "weather": {"type": "rain"}, "grip": "optimum"}
+    out = build_seasondefinition(r, SD, WD, TRACKS)
+    assert out["event"]["track"] == "Circuit de Spa Francorchamps"
+    assert out["weather_type"] == "GameModeSelectionWeatherType_RAIN"
+    assert out["initial_grip"] == "InitialGrip_OPTIMUM"
+    assert out["game_config"]["race_duration"] == 60 * 60
+
+
+def test_unknown_track_raises():
+    with pytest.raises(KeyError):
+        build_seasondefinition({"track": "silverstone_gp", "hour_of_day": 12, "race_minutes": 30},
+                               SD, WD, TRACKS)
+
+
+def test_unknown_weather_type_raises():
+    with pytest.raises(KeyError):
+        build_seasondefinition({"track": "kyalami_gp", "hour_of_day": 12, "race_minutes": 30,
+                                "weather": {"type": "snow"}}, SD, WD, TRACKS)

@@ -1,0 +1,247 @@
+{
+  "brands_hatch_gp": {
+    "track": "Brands Hatch",
+    "layout": "GP",
+    "event_name": "GP Race",
+    "track_length": 3916,
+    "max_pit_slot": 32
+  },
+  "brands_hatch_indy": {
+    "track": "Brands Hatch",
+    "layout": "Indy",
+    "event_name": "Indy Race",
+    "track_length": 1944,
+    "max_pit_slot": 32
+  },
+  "cota_gp": {
+    "track": "Circuit Of The Americas",
+    "layout": "GP",
+    "event_name": "GP Race",
+    "track_length": 5515,
+    "max_pit_slot": 34
+  },
+  "cota_national": {
+    "track": "Circuit Of The Americas",
+    "layout": "National",
+    "event_name": "National Race",
+    "track_length": 3702,
+    "max_pit_slot": 34
+  },
+  "spa_gp": {
+    "track": "Circuit de Spa Francorchamps",
+    "layout": "GP",
+    "event_name": "GP Race",
+    "track_length": 7004,
+    "max_pit_slot": 36
+  },
+  "donington_park_gp": {
+    "track": "Donington Park",
+    "layout": "GP",
+    "event_name": "GP Race",
+    "track_length": 4020,
+    "max_pit_slot": 19
+  },
+  "donington_park_national": {
+    "track": "Donington Park",
+    "layout": "National",
+    "event_name": "National Race",
+    "track_length": 3149,
+    "max_pit_slot": 19
+  },
+  "fuji_speedway_gp": {
+    "track": "Fuji Speedway",
+    "layout": "GP",
+    "event_name": "GP Race",
+    "track_length": 4549,
+    "max_pit_slot": 34
+  },
+  "fuji_speedway_gp_short": {
+    "track": "Fuji Speedway",
+    "layout": "GP Short",
+    "event_name": "GP Short Race",
+    "track_length": 4526,
+    "max_pit_slot": 34
+  },
+  "imola_gp": {
+    "track": "Imola",
+    "layout": "GP",
+    "event_name": "GP Race",
+    "track_length": 4909,
+    "max_pit_slot": 29
+  },
+  "kyalami_gp": {
+    "track": "Kyalami",
+    "layout": "GP",
+    "event_name": "GP Race",
+    "track_length": 4522,
+    "max_pit_slot": 20
+  },
+  "laguna_seca_gp": {
+    "track": "Laguna Seca",
+    "layout": "GP",
+    "event_name": "GP Race",
+    "track_length": 3602,
+    "max_pit_slot": 24
+  },
+  "monza_gp": {
+    "track": "Monza",
+    "layout": "GP",
+    "event_name": "GP Race",
+    "track_length": 5793,
+    "max_pit_slot": 30
+  },
+  "mount_panorama_gp": {
+    "track": "Mount Panorama",
+    "layout": "GP",
+    "event_name": "GP Race",
+    "track_length": 6213,
+    "max_pit_slot": 35
+  },
+  "nurburgring_24h": {
+    "track": "Nurburgring",
+    "layout": "24h",
+    "event_name": "24h Race",
+    "track_length": 25947,
+    "max_pit_slot": 30
+  },
+  "nurburgring_gp_strecke": {
+    "track": "Nurburgring",
+    "layout": "Gp Strecke",
+    "event_name": "Gp Strecke Race",
+    "track_length": 5148,
+    "max_pit_slot": 30
+  },
+  "nurburgring_nordschleife": {
+    "track": "Nurburgring",
+    "layout": "Nordschleife",
+    "event_name": "Nordschleife Race",
+    "track_length": 20832,
+    "max_pit_slot": 22
+  },
+  "nurburgring_sprint": {
+    "track": "Nurburgring",
+    "layout": "Sprint",
+    "event_name": "Sprint Race",
+    "track_length": 3629,
+    "max_pit_slot": 30
+  },
+  "oulton_park_international": {
+    "track": "Oulton Park",
+    "layout": "International",
+    "event_name": "International Race",
+    "track_length": 4333,
+    "max_pit_slot": 16
+  },
+  "oulton_park_fosters": {
+    "track": "Oulton Park",
+    "layout": "Fosters",
+    "event_name": "Fosters Race",
+    "track_length": 2662,
+    "max_pit_slot": 16
+  },
+  "paul_ricard_layout_1a_v2": {
+    "track": "Paul Ricard",
+    "layout": "Layout 1A-V2",
+    "event_name": "Layout 1A-V2 Race",
+    "track_length": 5770,
+    "max_pit_slot": 34
+  },
+  "paul_ricard_layout_1c_v2": {
+    "track": "Paul Ricard",
+    "layout": "Layout 1C-V2",
+    "event_name": "Layout 1C-V2 Race",
+    "track_length": 5842,
+    "max_pit_slot": 34
+  },
+  "paul_ricard_layout_3a": {
+    "track": "Paul Ricard",
+    "layout": "Layout 3A",
+    "event_name": "Layout 3A Race",
+    "track_length": 3793,
+    "max_pit_slot": 34
+  },
+  "paul_ricard_layout_3c": {
+    "track": "Paul Ricard",
+    "layout": "Layout 3C",
+    "event_name": "Layout 3C Race",
+    "track_length": 3841,
+    "max_pit_slot": 34
+  },
+  "red_bull_ring_gp": {
+    "track": "Red Bull Ring",
+    "layout": "GP",
+    "event_name": "GP Race",
+    "track_length": 4318,
+    "max_pit_slot": 28
+  },
+  "red_bull_ring_national": {
+    "track": "Red Bull Ring",
+    "layout": "National",
+    "event_name": "National Race",
+    "track_length": 2336,
+    "max_pit_slot": 28
+  },
+  "road_atlanta_gp": {
+    "track": "Road Atlanta",
+    "layout": "GP",
+    "event_name": "GP Race",
+    "track_length": 4088,
+    "max_pit_slot": 28
+  },
+  "sebring_gp": {
+    "track": "Sebring International Raceway",
+    "layout": "GP",
+    "event_name": "GP Race",
+    "track_length": 5954,
+    "max_pit_slot": 45
+  },
+  "suzuka_gp": {
+    "track": "Suzuka",
+    "layout": "GP",
+    "event_name": "GP Race",
+    "track_length": 5807,
+    "max_pit_slot": 25
+  },
+  "suzuka_east": {
+    "track": "Suzuka",
+    "layout": "East",
+    "event_name": "East Race",
+    "track_length": 2243,
+    "max_pit_slot": 25
+  },
+  "suzuka_west": {
+    "track": "Suzuka",
+    "layout": "West",
+    "event_name": "West Race",
+    "track_length": 3466,
+    "max_pit_slot": 10
+  },
+  "watkins_glen_gp_inner_loop": {
+    "track": "Watkins Glen International",
+    "layout": "GP Inner Loop",
+    "event_name": "GP Inner Loop Race",
+    "track_length": 5552,
+    "max_pit_slot": 40
+  },
+  "watkins_glen_short_inner_loop": {
+    "track": "Watkins Glen International",
+    "layout": "Short Inner Loop",
+    "event_name": "Short Inner Loop Race",
+    "track_length": 3943,
+    "max_pit_slot": 40
+  },
+  "watkins_glen_gp": {
+    "track": "Watkins Glen International",
+    "layout": "GP",
+    "event_name": "GP Race",
+    "track_length": 5435,
+    "max_pit_slot": 40
+  },
+  "watkins_glen_short": {
+    "track": "Watkins Glen International",
+    "layout": "Short",
+    "event_name": "Short Race",
+    "track_length": 3907,
+    "max_pit_slot": 40
+  }
+}

@@ -1,18 +1,49 @@
-"""Turn captured AC EVO templates + one season round + passwords into the
-final config dicts (ready to be blob-encoded by codec.py).
+"""Build the AC EVO -serverconfig and -seasondefinition documents (ready to be
+blob-encoded by codec.py) from one season round + the track map + passwords.
 
-The schema is the deeply-nested, per-session shape captured in Task 2; see
-FIELD_MAP.md for the exact dotted paths and documented ambiguities. Weather
-and the track-path substitution are best-effort extrapolations from a single
-clear-weather / single-track (Kyalami) capture -- see task-4-report.md.
+The seasondefinition schema is the *flat input* form the game server actually
+accepts -- validated end-to-end against the live server on 2026-07-27 (boots,
+binds the game port, registers to the Kunos lobby). It is NOT the deeply-nested
+`event_map/session_map/scene` shape that appears in the server log (that is the
+server's internal/expanded representation, which its input parser rejects field
+by field). Schema and enum values are adopted from the reference implementation
+github.com/zino1337/acevo-server (`scripts/launch_payloads.py`).
+
+The serverconfig document is patched from the captured `serverconfig.template.json`
+(the server accepts it as-is; validated in the same spike).
 """
 
 import copy
 
+# --- enum vocabularies (season.yml friendly value -> game token) ---
+EVENT_TYPES = {
+    "practice": "GameModeType_PRACTICE",
+    "race weekend": "GameModeType_RACE_WEEKEND",
+}
+WEATHER_TYPES = {
+    "clear": "GameModeSelectionWeatherType_CLEAR",
+    "scattered clouds": "GameModeSelectionWeatherType_SCATTERED_CLOUDS",
+    "broken clouds": "GameModeSelectionWeatherType_BROKEN_CLOUDS",
+    "overcast": "GameModeSelectionWeatherType_OVERCAST",
+    "drizzle": "GameModeSelectionWeatherType_DRIZZLE",
+    "rain": "GameModeSelectionWeatherType_RAIN",
+    "heavy rain": "GameModeSelectionWeatherType_HEAVY_RAIN",
+    "damp": "GameModeSelectionWeatherType_DAMP",
+}
+WEATHER_BEHAVIOURS = {
+    "static": "GameModeSelectionWeatherBehaviour_STATIC",
+    "dynamic": "GameModeSelectionWeatherBehaviour_DYNAMIC",
+}
+INITIAL_GRIPS = {
+    "green": "InitialGrip_GREEN",
+    "fast": "InitialGrip_FAST",
+    "optimum": "InitialGrip_OPTIMUM",
+}
+DURATION_TYPE_TIME = "GameModeSelectionDuration_TIME"
 
-# Session-id -> which session_defaults bucket supplies its duration. The Race
-# (id "2") is special-cased to round_cfg["race_minutes"] in the builder.
-_DURATION_BUCKET = {"0": "practice", "1": "qualifying"}
+# game_config carries these four sessions in order; Race duration comes from the
+# round, the others from session_defaults. Warmup defaults to 0 (disabled).
+_SESSIONS = ("practice", "qualify", "warmup", "race")
 
 
 def set_path(obj: dict, path: str, value) -> None:
@@ -23,59 +54,16 @@ def set_path(obj: dict, path: str, value) -> None:
     cur[keys[-1]] = value
 
 
-def _iter_sessions(sd: dict):
-    """Yield (session_id, session_dict) for every session of every event."""
-    for ev in sd["event_map"].values():
-        for sid, session in ev["session_map"].items():
-            yield sid, session
+def _enum(mapping: dict, value: str, what: str) -> str:
+    key = str(value).strip().lower()
+    if key not in mapping:
+        raise KeyError(f"unknown {what} '{value}'; valid: {', '.join(sorted(mapping))}")
+    return mapping[key]
 
 
-def _track_slug(track: str) -> str:
-    """On-disk folder/file slug for a track display name.
-
-    EXTRAPOLATION: the only captured sample is "Kyalami" -> "kyalami", so the
-    derived rule is "lower-case the display name". Validated for single-word
-    names only; tracks with spaces/punctuation (e.g. "Spa-Francorchamps") may
-    need an explicit slug override -- flagged for the Task 6 spike.
-    """
-    return track.lower()
-
-
-def _apply_track(session: dict, track: str) -> None:
-    """Replace the display name AND every on-disk path field so no stale track
-    reference survives.
-
-    Captured Kyalami pattern (backslash-separated Windows paths):
-        name            = "Kyalami"
-        folder_path     = "content\\tracks\\kyalami"
-        file_path       = "content\\tracks\\kyalami\\kyalami.scene"
-        track_data_path = "content\\tracks\\kyalami\\kyalami.track"
-
-    The template also embeds the old track slug throughout
-    scene.containers[] (e.g. "content\\tracks\\kyalami\\containers\\...").
-    Those are captured-track-specific asset paths, not derived from any
-    other field we already own, so they have to be fixed up by string
-    substitution: derive the OLD slug from the track_content_data this
-    session already has (before we overwrite it) using the same
-    _track_slug() rule, then swap old slug -> new slug in every
-    scene.containers[] entry (and scene.event_name, in case a future
-    template embeds the slug there too).
-    """
-    scene = session["scene"]
-    tcd = scene["track_content_data"]
-    old_slug = _track_slug(tcd["name"])
-
-    slug = _track_slug(track)
-    folder = "content\\tracks\\" + slug
-    tcd["name"] = track
-    tcd["folder_path"] = folder
-    tcd["file_path"] = folder + "\\" + slug + ".scene"
-    tcd["track_data_path"] = folder + "\\" + slug + ".track"
-
-    if old_slug != slug:
-        scene["containers"] = [c.replace(old_slug, slug) for c in scene["containers"]]
-        if "event_name" in scene and isinstance(scene["event_name"], str):
-            scene["event_name"] = scene["event_name"].replace(old_slug, slug)
+def session_time(hour: int) -> dict:
+    return {"year": 2024, "month": 8, "day": 15,
+            "hour": int(hour), "minute": 0, "second": 0, "time_multiplier": 1}
 
 
 def build_serverconfig(template: dict, server: dict, passwords: dict) -> dict:
@@ -93,53 +81,57 @@ def build_serverconfig(template: dict, server: dict, passwords: dict) -> dict:
     set_path(out, "admin_password", passwords["admin"])
     set_path(out, "spectator_password", passwords["spectator"])
     # Cars are a list of {car_name, ballast, restrictor} objects, not strings.
-    set_path(out, "allowed_cars_list_full",
-             [{"car_name": name, "ballast": 0, "restrictor": 0}
-              for name in server["cars"]])
+    # Optional: if the season omits `cars`, keep the template's captured list
+    # (car internal-name mapping is a separate concern from this schema).
+    if server.get("cars"):
+        set_path(out, "allowed_cars_list_full",
+                 [{"car_name": name, "ballast": 0, "restrictor": 0}
+                  for name in server["cars"]])
     return out
 
 
-def build_seasondefinition(template: dict, round_cfg: dict,
-                           session_defaults: dict, weather_defaults: dict) -> dict:
-    out = copy.deepcopy(template)
+def build_seasondefinition(round_cfg: dict, session_defaults: dict,
+                           weather_defaults: dict, tracks: dict) -> dict:
+    """Build the flat season_doc the server accepts as -seasondefinition input.
 
-    # Effective weather: round-level overrides win over season defaults.
+    round_cfg keys: track (a tracks.json slug), hour_of_day, race_minutes, and
+      optional weather (a dict overriding weather_defaults) and grip.
+    session_defaults: {practice|qualify|warmup: {minutes: N}}.
+    weather_defaults / round weather: {type, behaviour, grip}.
+    tracks: the tracks.json map (slug -> event dict).
+    """
+    slug = round_cfg["track"]
+    if slug not in tracks:
+        raise KeyError(f"unknown track slug '{slug}'; see tracks.json for valid slugs")
+    event = dict(tracks[slug])
+
     weather = dict(weather_defaults)
     weather.update(round_cfg.get("weather") or {})
+    hour = round_cfg["hour_of_day"]
 
-    for sid, session in _iter_sessions(out):
-        # --- track + layout ---
-        _apply_track(session, round_cfg["track"])
-        set_path(session, "scene.track_layout_name", round_cfg["layout"])
-
-        # --- time of day ---
-        set_path(session, "weather.initial_date_time.hour", round_cfg["hour_of_day"])
-
-        # --- session duration (minutes -> milliseconds) ---
-        if sid == "2":                       # Race
+    game_config = {
+        "race_duration_type": DURATION_TYPE_TIME,
+        "min_waiting_for_players": 60,
+        "max_waiting_for_players": 60,
+    }
+    for name in _SESSIONS:
+        if name == "race":
             minutes = round_cfg["race_minutes"]
         else:
-            bucket = _DURATION_BUCKET[sid]
-            minutes = session_defaults[bucket]["minutes"]
-        set_path(session, "specialization.base.session_duration_ms", minutes * 60000)
+            minutes = session_defaults.get(name, {}).get("minutes", 0)
+        game_config[f"{name}_duration"] = int(minutes) * 60
+        game_config[f"{name}_time_of_day"] = session_time(hour)
+        game_config[f"{name}_overtime_waiting_next_session"] = 0
+        game_config[f"{name}_max_wait_to_box"] = 0
 
-        # --- best-effort weather (see report; extrapolated from clear-weather capture) ---
-        set_path(session, "weather.static_data.static_weather.mean_ambient_temperature_c",
-                 weather["ambient_temp"])
-        set_path(session, "weather.static_data.static_weather.cloud_coverage",
-                 weather["cloud_level"])
-        set_path(session, "weather.static_data.static_weather.precipitation",
-                 weather["rain"])
-        set_path(session, "weather.static_data.static_weather.initial_global_wetness",
-                 weather["rain"])
-        set_path(session, "weather.static_data.static_weather.is_dynamic_weather",
-                 weather["weather_randomness"] > 0)
-        # weather_type enum left unchanged: the rain enum string is unknown.
-
-        # --- grip (numeric only, if the season supplies it) ---
-        if "initial_grip" in round_cfg:
-            set_path(session, "dynamic_track_condition.initial_grip",
-                     round_cfg["initial_grip"])
-        # The InitialGrip_* enum string is left unchanged.
-
-    return out
+    grip = round_cfg.get("grip", weather.get("grip", "green"))
+    return {
+        "game_type": EVENT_TYPES["race weekend"],
+        "game_config": game_config,
+        "event": event,
+        "weather_type": _enum(WEATHER_TYPES, weather.get("type", "clear"), "weather type"),
+        "weather_behaviour": _enum(WEATHER_BEHAVIOURS, weather.get("behaviour", "static"),
+                                   "weather behaviour"),
+        "initial_grip": _enum(INITIAL_GRIPS, grip, "initial grip"),
+        "export_json": False,
+    }
