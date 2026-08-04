@@ -1,9 +1,12 @@
 ansible/.vault_password
 *.retry
 .ansible/
-.claude/
 __pycache__/
 *.pyc
+
+# Track .claude/ (shared skills, config) but not machine-local bits
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
 
 # AC EVO generated launch blobs contain plaintext passwords — never commit
 scripts/acevo-season/**/*.blob
