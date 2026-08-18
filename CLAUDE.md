@@ -129,7 +129,7 @@ For bulk file pushes, `win_copy` in a **playbook** handles chunking for you and 
 - `httpd-ssl.conf` is intentionally empty; SSL globals are configured per-vhost.
 - `C:\Certbot\csr\` and `keys\` have ~120 leftover files from a broken 2021 auto-renew loop. Harmless but visually noisy.
 - The `mnr` account works over WinRM only because `LocalAccountTokenFilterPolicy=1` is set in the registry. If someone wipes that key, remote auth starts failing with `InvalidCredentialsError` despite correct creds.
-- **`C:` space** — was down to 2.23 GB free; **~11.4 GB free after the 2026-08-18 cleanup** (see `docs/disk-reclaim-2026-08-18.md`). Still check free space before pushing anything large, and clear stale `.bak-*` / `Backup_*\` folders once a build is confirmed good.
+- **`C:` space** — was down to 2.23 GB free; **11.37 GB free after the 2026-08-18 cleanup** (see `docs/disk-reclaim-2026-08-18.md`). Nearly all of it came from one dormant `docker_data.vhdx`; a WinSxS `/StartComponentCleanup /ResetBase` was also run and freed **nothing**, so don't reach for that one again. Still check free space before pushing anything large, and clear stale `.bak-*` / `Backup_*\` folders once a build is confirmed good.
 - **Do not delete `C:\feedback`.** It looks like an abandoned 2025 ASP.NET app and there is a *stopped* IIS site pointing at it, but `C:\feedback\WebApi.exe` is **live on port 8080** as a standalone process. It came within one command of being deleted during the 2026-08-18 disk cleanup.
 - Don't overwrite the AC EVO `cars.json` / `events_practice.json` / `events_race_weekend.json` from a Steam copy — they differ from stock and look league-tuned.
 

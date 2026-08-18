@@ -10,8 +10,8 @@ removed, what was deliberately kept, and where to look first next time.
 | Obsolete installers, staging dirs, Linux binaries | 530 MB |
 | `ACEvo_Latest\`, AMS2 dedicated server, `C:\buzzworx` | 769 MB |
 | Dormant Docker WSL data | **7 987 MB** |
-| WinSxS component-store cleanup | still running at time of writing — see below |
-| **Free before → after** | **2.23 GB → 11.37 GB** (excludes the WinSxS step) |
+| WinSxS component-store cleanup | **~0 MB** — see below |
+| **Free before → after** | **2.23 GB → 11.37 GB** |
 
 ## The lesson: it was never the game servers
 
@@ -61,9 +61,29 @@ rebuild an empty VM. **Anything that was inside those container volumes is gone.
 - `C:\buzzworx` (101 MB, dated 2021) — matches the orphaned `api.buzzworx.co` vhost in
   `C:\Apache24\conf\api.conf`, which `httpd.conf` does not include. No IIS site, no service.
 
-**WinSxS** — `Dism /Online /Cleanup-Image /StartComponentCleanup /ResetBase`. Windows itself
-reported `Component Store Cleanup Recommended: Yes` with 2.52 GB in "Backups and Disabled
-Features". `/ResetBase` means previously-installed Windows updates can no longer be uninstalled.
+## WinSxS: the cleanup that freed nothing
+
+`Dism /Online /Cleanup-Image /StartComponentCleanup /ResetBase` ran to completion (exit 0, ~20
+min on 2 cores) and **reclaimed no measurable space** — 11.37 GB free before, 11.37 GB after.
+
+It was worth trying: Windows reported `Component Store Cleanup Recommended: Yes`, with 2.52 GB
+under "Backups and Disabled Features". Afterwards `Number of Reclaimable Packages` went 1 → 0
+and `Cleanup Recommended` went Yes → No, but the store stayed at 5.69 GB and the 2.52 GB line
+did not move.
+
+Why the 2.52 GB is not free space waiting to be claimed:
+
+- **It is mostly *disabled features*, not superseded update backups.** `/StartComponentCleanup`
+  only removes superseded component versions — there was exactly **one** reclaimable package.
+  Disabled-feature payloads only go with `/RemoveFeature`, which makes those features
+  un-installable without media. Not worth it here.
+- **WinSxS is hard-linked.** Its reported "size" double-counts files that also live in
+  `C:\Windows`; the analysis itself says 3.17 GB of the 5.69 GB is "Shared with Windows". The
+  number is not a block of recoverable disk.
+
+**Don't re-run this expecting gains.** `Cleanup Recommended: No` is now the steady state. The
+one lasting effect is the `/ResetBase` side effect: previously-installed Windows updates can no
+longer be uninstalled.
 
 ## What was deliberately kept
 
