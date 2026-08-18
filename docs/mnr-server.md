@@ -65,6 +65,17 @@ All in `conf/extra/httpd-vhosts.conf`:
 | `acc.mondaynightracing.co.za` | 443 | proxy `http://10.104.0.10:8773/` + WS upgrade | — | same as apex (wildcard SAN) |
 | `ams2.mondaynightracing.co.za` | 443 | proxy `http://10.104.0.10:8774/` + WS upgrade | — | same as apex (wildcard SAN) |
 
+Plus these, each in its own `Include`d file at the end of `httpd.conf` rather than in `httpd-vhosts.conf` (all repo-managed — do not hand-edit on the server):
+
+| ServerName | Port | Backend | Rendered from | Deploy |
+|---|---|---|---|---|
+| `palace.mondaynightracing.co.za` | 443 | static `C:/palace/web` + proxy `127.0.0.1:8787` | `ansible/templates/httpd-palace.conf.j2` | `deploy-palace.yml --tags apache` |
+| `manager.mondaynightracing.co.za` | 443 | proxy `127.0.0.1:8090` (mnr-manager, Kotlin) | `mnr-manager` repo | `deploy-manager.yml --tags apache` |
+| `acevo.mondaynightracing.co.za` | 443 | proxy `http://10.104.0.10:8774/` + WS upgrade | `ansible/templates/httpd-acevo.conf.j2` | `deploy-mnr-website.yml --tags apache` |
+
+> **`ams2` and `acevo` share port 8774 on purpose.** AMS2 is no longer running on this box; 8774 is now the [AC EVO Server Manager](acevo-server-manager.md). `acevo.` is the correct name and is what the landing page links to; `ams2.` is kept alive so old bookmarks still resolve.
+
+
 All SSL vhosts use:
 ```
 SSLProtocol -all +TLSv1.2 +TLSv1.3

@@ -1,0 +1,36 @@
+# Managed by mnr/ansible/deploy-mnr-website.yml — do not edit on the server by hand.
+#
+# Reverse proxy for the AC EVO Server Manager (Emperor Servers "One Server Manager"
+# v1.6.3), which runs as a bare process from C:\Users\MNR\Desktop\mnr\ACEvoManager\
+# and binds {{ acevo_backend_host }}:{{ acevo_backend_port }}.
+#
+# The older ams2.mondaynightracing.co.za vhost in httpd-vhosts.conf points at the same
+# backend port and is deliberately left in place so existing bookmarks keep working.
+# AMS2 itself is no longer on this box.
+<VirtualHost *:443>
+    ServerName acevo.mondaynightracing.co.za
+
+    SSLEngine on
+    SSLCertificateFile    "{{ acevo_cert }}"
+    SSLCertificateKeyFile "{{ acevo_key }}"
+
+    SSLProtocol -all +TLSv1.2 +TLSv1.3
+    SSLCipherSuite HIGH:!aNULL:!MD5:!RC4
+    SSLHonorCipherOrder on
+    SSLCompression off
+
+    Header always set Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+
+    ProxyPreserveHost On
+
+    # WebSocket upgrade (live status / log tail) must come before the generic
+    # ProxyPass below — RewriteRule [P,L] short-circuits it.
+    RewriteEngine On
+    RewriteCond %{HTTP:Upgrade} =websocket [NC]
+    RewriteRule ^/?(.*) "ws://{{ acevo_backend_host }}:{{ acevo_backend_port }}/$1" [P,L]
+
+    ProxyPass        / http://{{ acevo_backend_host }}:{{ acevo_backend_port }}/
+    ProxyPassReverse / http://{{ acevo_backend_host }}:{{ acevo_backend_port }}/
+
+    ErrorLog "logs/acevo-proxy-error.log"
+</VirtualHost>

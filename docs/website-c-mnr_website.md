@@ -2,6 +2,8 @@
 
 DocumentRoot for the **`mondaynightracing.co.za`** Apache vhost on `mnr-race`. Serves a single-page landing for the MNR South African sim-racing community.
 
+> **Now version-controlled.** Since 2026-08-18 the source of truth is `site/mnr_website/` in this repo, deployed with `ansible-playbook deploy-mnr-website.yml --tags site` (non-disruptive). Edit there, not on the box — the next deploy overwrites hand-edits. `stats.txt` is runtime state, stays out of the repo, and survives a deploy because the playbook copies without deleting.
+
 ## Contents
 
 ```
@@ -52,8 +54,12 @@ Sections:
 
 1. Header with "South African Sim Racing Community" pill and the MNR logo.
 2. Two tile cards (glass/blur style), each with a background image hotlinked from Unsplash:
-   - **Assetto Corsa Competizione** → links to `https://acc.mondaynightracing.co.za`.
-   - **Automobilista 2** → links to `https://ams2.mondaynightracing.co.za`.
+   - **Assetto Corsa Competizione** (green accent, `timer` icon) → `https://acc.mondaynightracing.co.za`.
+   - **Assetto Corsa EVO** (gold accent, `gauge` icon) → `https://acevo.mondaynightracing.co.za`.
+
+   > The second card was **Automobilista 2 → `ams2.`** until 2026-08-18. AMS2 is no longer running on the
+   > server, and its port (8774) now serves the [AC EVO Server Manager](acevo-server-manager.md), so the card
+   > was retargeted rather than a third one added. The `ams2.` vhost still works for old bookmarks.
 3. Tagline: *"Have fun, race fair, and see you on track!"*.
 4. Discord CTA button → invite `https://discord.gg/E8dR97ffFy`.
 5. Footer: four-colour SA flag-ish stripe + `© 2026 Monday Night Racing • South Africa`.
@@ -116,5 +122,5 @@ Quick-and-dirty. Notable properties:
   - Plausible/Umami self-hosted analytics — richer data, one config.
   - Drop it entirely if the counts aren't watched.
 - **Discord invite `discord.gg/E8dR97ffFy`** — verify it's set to never expire in the Discord server settings. A default invite link dies in 7 days.
-- **Version control the site**. Right now the only record of these files is the live server; a change on disk is a change in production with no history. Moving the site into this repo (e.g. `website-mnr/`) and deploying via an Ansible playbook gives rollback + review.
+- ~~**Version control the site**~~ — **done 2026-08-18**: `site/mnr_website/` + `ansible/deploy-mnr-website.yml`.
 - **Favicon size**. 45 KB for a favicon is heavy; shrink to a 16x16/32x32 PNG or proper `.ico`.
