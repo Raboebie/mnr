@@ -29,11 +29,15 @@ All verified live on both managers, 2026-08-18.
 | Endpoint | Auth | Returns |
 |---|---|---|
 | `GET /healthcheck.json` | **public** | version, uptime, and per-server live state |
-| `GET /api/championship/list.json` | account | all championships + links to their standings |
-| `GET /api/championship/{championshipID}/standings.json` | account | driver + team standings |
-| `GET /api/results/list.json` | account | paged session results index |
-| `GET /server/{serverID}/result/download/{name}.json` | account | **manager-format** result (use this) |
-| `GET /server/{serverID}/results/download/{name}.json` | account | raw game-format result |
+| `GET /api/championship/list.json` | **public** | all championships + links to their standings |
+| `GET /api/championship/{championshipID}/standings.json` | **public** | driver + team standings |
+| `GET /api/results/list.json` | **public** | paged session results index |
+| `GET /server/{serverID}/result/download/{name}.json` | **public** | **manager-format** result (use this) |
+| `GET /server/{serverID}/results/download/{name}.json` | **public** | raw game-format result |
+
+"Public" above reflects **both** managers as of 2026-08-18, with Public Access enabled on each
+(see [Public Access](#public-access)). Turn it off and every row except `/healthcheck.json`
+becomes `302 → /login`.
 
 Note the singular `championship` in the path and the singular/plural split between
 `/result/download/` and `/results/download/` — both are easy to get wrong.
@@ -100,9 +104,16 @@ aren't used.
 **Two different result formats, and the difference matters:**
 
 - `server_manager_results_json_url` (`/result/download/`) — **the one you want.** A `Places[]`
-  array already sorted by finishing order: `Position`, `DriverName`, `DriverGUID`, `CarModel`,
-  `RaceNumber`, `Team`, `TotalRaceTime`, `TimePenalty`, `Disqualified`, `Laps`, plus
-  `Collisions`, `IsWetSession`, `TrackID`.
+  array already sorted by finishing order: `Position`, `CarModel`, `RaceNumber`, `Team`,
+  `TotalRaceTime`, `TimePenalty`, `Disqualified`, `Laps`, plus `Collisions`, `IsWetSession`,
+  `TrackID` at the top level.
+
+  **Driver identity is in a nested `Drivers[]` array, not on the `Place`.** A `Place` does have
+  `DriverName` / `DriverGUID` keys but on AC EVO they are **always empty strings** — read
+  `Places[].Drivers[]` instead, whose entries are
+  `{GUID, Name, DriverID, Nation, IsPlayer, Penalties}` (`GUID` is the driver's SteamID64).
+  Verified on both an authenticated and an anonymous fetch — it is a schema quirk, not
+  redaction.
 - `results_json_url` (`/results/download/`) — the raw game dump. On AC EVO its top level is
   `car_standings` / `driver_standings` / `laps` / `collisions`, and cars are identified by a
   128-bit `car_id: {a, b}` pair you have to join yourself. Only worth it for telemetry-level
@@ -132,12 +143,49 @@ Per-endpoint access is governed by the manager's own account permissions ("Champ
 List", "Results Api List", …), and unauthenticated access requires the account system's
 **Public Access** to be switched on.
 
-> **The ACC manager currently has Public Access enabled and AC EVO does not.**
-> `https://acc.mondaynightracing.co.za/api/championship/list.json` and `/api/results/list.json`
-> return 200 with **no credentials** — 116 pages of race history, championship names and driver
-> GUIDs are world-readable. AC EVO returns 302 → `/login` for the same paths. That asymmetry is
-> almost certainly unintentional; decide whether ACC should be locked down or EVO opened up,
-> rather than leaving them inconsistent.
+## Public Access
+
+Unauthenticated access is a **single master toggle** per manager, on top of the `Public` group's
+permissions. Both managers have it **on** as of 2026-08-18 (ACC already did; EVO was opened
+deliberately on that date to match).
+
+Where it lives — `store.json\meta\server-account-options.json`:
+
+```json
+{"IsOpen": true}
+```
+
+**To change it, use the UI** (the manager caches state in memory): log in as `admin` →
+**Accounts** → **Public Access** → *Allow Public Access*. That button is just
+`GET /accounts/toggle-open`. Editing the file directly also works but needs a
+`Restart-Service acevo-server-manager` / `acc-server-manager` afterwards.
+
+### What the toggle actually exposes
+
+It is **not** an API-only switch. It activates every permission held by the built-in `Public`
+group (`store.json\groups\cb1cddec-b92e-4d8f-8df6-54a631423aed.json`), which on AC EVO is:
+
+| Permission | Effect while public |
+|---|---|
+| `championships.championship.api-list` / `api-standings` | the championship API |
+| `results.results.api-list` | the results API |
+| `results.{results,drivers,leaderboards,statistics}.view` | the whole results browser |
+| `championships.championship.view` / `view-inactive` | championships, **including unpublished ones** |
+| `championships.championship.register` | **anonymous users can sign up to championships** |
+| `championships.championship.export`, `results.results.export` | bulk data export |
+| `server-manager.calendar.feed` / `.view`, `server-manager.preset.list` | calendar feed, preset names |
+| `assetto-corsa-evo.car-list.view` | car list |
+
+Two consequences worth being deliberate about:
+
+- **Result payloads carry SteamID64s and real names** (`Places[].Drivers[].GUID` / `.Name`), so
+  full driver identity for every session is world-readable while this is on.
+- **`register` and `view-inactive` are broader than ACC's equivalent group**, which has
+  `sign-up` but neither of those. If anonymous championship sign-ups become a nuisance, trim
+  them in Accounts → Groups → Public rather than turning the whole toggle off.
+
+`manager.json` separately sets `PreventWebCrawlers: true` on the EVO manager, so this is exposed
+to anyone who asks but is not meant to be indexed.
 
 ## Rate limiting — read this before writing a poller
 

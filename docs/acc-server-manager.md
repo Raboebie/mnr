@@ -164,8 +164,8 @@ the Palace `start` tag — **off-peak only**, and check `Get-Process accServer` 
 Read-only JSON API shared with the AC EVO manager (same product family) —
 see **[server-manager-api.md](server-manager-api.md)**.
 
-> **This manager has "Public Access" enabled and the EVO one does not.** As of 2026-08-18
-> `https://acc.mondaynightracing.co.za/api/championship/list.json` and `/api/results/list.json`
-> return 200 with **no credentials**, exposing 116 pages of race history, championship names and
-> driver GUIDs. Almost certainly unintentional — worth deciding deliberately rather than leaving
-> the two managers inconsistent.
+> **Public Access is enabled here**, so `/api/championship/list.json` and `/api/results/list.json`
+> return 200 with no credentials — 116 pages of race history and championship names are
+> world-readable. The EVO manager was opened to match on 2026-08-18, so the two are now
+> consistent by choice rather than by accident. The toggle is
+> `store.json\meta\server-account-options.json` → `{"IsOpen":true}`.

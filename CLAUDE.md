@@ -190,6 +190,9 @@ changes still mean editing the JSON store and restarting.
 Use `scripts/osm-api.sh <acc|acevo> <endpoint>`; it logs in with `vault_osm_admin_password` (same `admin`
 account on both) and caches the cookie. **Two traps:** exceeding the 5-requests-per-20-seconds limit returns
 `302 → /login`, not `429`, so it looks exactly like a broken session; and the vendor's documented search
-syntax `q=%2Bspa` returns HTTP 500 (plain `q=monza` works). Also note **ACC has Public Access enabled and EVO
-does not** — ACC's championship and results endpoints are readable with no credentials at all. Full detail in
+syntax `q=%2Bspa` returns HTTP 500 (plain `q=monza` works). **Both managers now have Public Access on**
+(EVO was opened 2026-08-18 to match ACC), so championships, standings and results — including SteamID64s and
+driver names in `Places[].Drivers[]` — are readable with no credentials. It is one toggle per manager:
+`store.json\meta\server-account-options.json` → `{"IsOpen":true}`, flipped from Accounts → Public Access in
+the UI. Note it also enables anonymous championship **registration** on EVO. Full detail in
 `docs/server-manager-api.md`.
