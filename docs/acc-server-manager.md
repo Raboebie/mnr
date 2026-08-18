@@ -2,7 +2,7 @@
 
 The Assetto Corsa **Competizione** race platform for MNR — distinct from the AC **EVO**
 server ([acevo-server.md](acevo-server.md)). It's the **Emperor Servers / JustaPenguin
-"Assetto Corsa Competizione Server Manager", v1.4.6**: a Go web app that manages several ACC
+"Assetto Corsa Competizione Server Manager"** (the install is now **v1.6.2** per `/healthcheck.json` — older notes say v1.4.6; it has been updated): a Go web app that manages several ACC
 dedicated-server instances, runs championships, and stores results, all behind a web UI.
 
 | | |
@@ -158,3 +158,14 @@ The manager reads its JSON store **once, at startup**. Any file-level change (ch
 is a `Restart-Service acc-server-manager` (no RDP needed), which `deploy-acc-championships.yml`
 does for you. But the restart still takes down the running `accServer` instances, so treat it like
 the Palace `start` tag — **off-peak only**, and check `Get-Process accServer` first.
+
+## Web API
+
+Read-only JSON API shared with the AC EVO manager (same product family) —
+see **[server-manager-api.md](server-manager-api.md)**.
+
+> **This manager has "Public Access" enabled and the EVO one does not.** As of 2026-08-18
+> `https://acc.mondaynightracing.co.za/api/championship/list.json` and `/api/results/list.json`
+> return 200 with **no credentials**, exposing 116 pages of race history, championship names and
+> driver GUIDs. Almost certainly unintentional — worth deciding deliberately rather than leaving
+> the two managers inconsistent.

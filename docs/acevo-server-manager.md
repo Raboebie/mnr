@@ -22,18 +22,38 @@ Installed 2026-08-09. Added to the public landing page 2026-08-18.
 
 ## How it starts
 
-**Nothing starts it.** It is a bare process launched by hand — no Windows service, no
-scheduled task, nothing in Startup. It does not survive a reboot.
+Runs as the NSSM service **`acevo-server-manager`** (installed 2026-08-18 by
+`ansible/deploy-acevo-manager-service.yml`): `Automatic` start so it comes up on boot,
+`AppExit Default Restart` for crash-restart, running as `.\MNR`, `AppDirectory` set to the
+install dir so it finds its own `store.json`. Service logs at `…\ACEvoManager\logs\service-*.log`.
 
 ```powershell
-Get-Process acevo-server-manager        # the up-check
+Get-Service acevo-server-manager        # the up-check
+Restart-Service acevo-server-manager    # works over WinRM, no RDP needed
 ```
 
-This is the same gap the ACC manager had before it was wrapped in NSSM on 2026-07-26. Until
-that is done here, a reboot silently takes `acevo.mondaynightracing.co.za` offline (Apache
-stays up and returns 503) and someone has to RDP in to start it. **Wrapping it in an NSSM
-service is the obvious follow-up** — see the `acc-server-manager` setup in
-[acc-server-manager.md](acc-server-manager.md) for the pattern.
+Crash-restart was verified on install: killing the process produced a new PID within ~12s and
+`/healthcheck.json` came back `OK`.
+
+> Until 2026-08-18 this was a bare hand-started process, so a reboot silently took
+> `acevo.mondaynightracing.co.za` offline (Apache stays up and returns 503) until someone
+> RDP'd in. Same gap the ACC manager had before it was wrapped in NSSM on 2026-07-26.
+
+`config.yml` has `disable_windows_browser_open: true` — a service has no desktop session, so
+the manager must not try to launch a browser on start. The playbook sets this and keeps a
+`config.yml.bak-svc` alongside it.
+
+To roll back to a hand-started process:
+
+```powershell
+nssm stop acevo-server-manager; nssm remove acevo-server-manager confirm
+```
+
+## Web API
+
+The manager exposes a small read-only JSON API (championships, standings, results, plus a
+public `/healthcheck.json`). Endpoints, auth, rate-limit traps and a helper script are
+documented in **[server-manager-api.md](server-manager-api.md)**.
 
 ## Serving
 

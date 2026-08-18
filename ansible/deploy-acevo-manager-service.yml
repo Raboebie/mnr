@@ -1,0 +1,108 @@
+---
+# Install the AC EVO Server Manager as an NSSM Windows service.
+#
+# Before this it was a bare hand-started process (see docs/acevo-server-manager.md), so a reboot
+# silently took acevo.mondaynightracing.co.za offline until someone RDP'd in. As a service it
+# starts on boot, crash-restarts, and can be bounced over WinRM.
+#
+# Mirrors deploy-acc-manager-service.yml, which did the same for the ACC manager on 2026-07-26.
+#
+# The run-as password defaults to the vault's WinRM password (the same MNR account); override with
+# -e svc_password=... if they ever diverge. NSSM stores it as an encrypted LSA secret on the box.
+#
+#     ansible-playbook deploy-acevo-manager-service.yml
+#
+# DISRUPTIVE: stops the running manager (and any AC EVO servers it has spawned) to install and
+# test the service. Run off-peak. Rollback:
+#     nssm stop acevo-server-manager; nssm remove acevo-server-manager confirm
+#     (then hand-start acevo-server-manager.exe again)
+- name: Install the AC EVO Server Manager as an NSSM service
+  hosts: windows
+  gather_facts: false
+  vars:
+    base: 'C:\Users\MNR\Desktop\mnr\ACEvoManager'
+    nssm: 'C:\palace\tools\nssm.exe'
+    svc: acevo-server-manager
+    svc_user: '.\MNR'
+    svc_password: "{{ mnr_race_winrm_password }}"
+    acevo_port: 8774
+
+  tasks:
+    - name: Require a run-as password
+      ansible.builtin.assert:
+        that:
+          - svc_password | default('') | length > 0
+        fail_msg: "svc_password is empty — the vault is missing vault_mnr_race_winrm_password"
+
+    - name: Refuse to run while an AC EVO event is live
+      ansible.windows.win_uri:
+        url: "http://127.0.0.1:{{ acevo_port }}/healthcheck.json"
+        return_content: true
+      register: health
+      failed_when: false
+
+    - name: Abort if a session is in progress
+      ansible.builtin.assert:
+        that:
+          - not (health.json.EventInProgress | default(false))
+        fail_msg: >-
+          An AC EVO event is in progress ({{ health.json.Servers | default({}) }}).
+          Installing the service stops the manager and its game servers — re-run off-peak,
+          or pass -e force_stop=true if you are certain.
+      when: not (force_stop | default(false) | bool)
+
+    # A service has no desktop session, so the manager must not try to open a browser on start.
+    - name: Disable browser-open in config.yml
+      ansible.windows.win_shell: |
+        $cfg = Join-Path '{{ base }}' 'config.yml'
+        if (-not (Test-Path "$cfg.bak-svc")) { Copy-Item $cfg "$cfg.bak-svc" }
+        $t = [IO.File]::ReadAllText($cfg).Replace('disable_windows_browser_open: false','disable_windows_browser_open: true')
+        [IO.File]::WriteAllText($cfg, $t, (New-Object System.Text.UTF8Encoding($false)))
+
+    - name: Stop the hand-started manager and any AC EVO servers
+      ansible.windows.win_shell: |
+        Get-Process acevo-server-manager,AssettoCorsaEVOServer,ServerLauncher -ErrorAction SilentlyContinue |
+          Stop-Process -Force
+        Start-Sleep -Seconds 4
+
+    - name: Install and configure the NSSM service (credentials not echoed)
+      ansible.windows.win_shell: |
+        $ErrorActionPreference = 'Stop'
+        New-Item -ItemType Directory -Force -Path (Join-Path '{{ base }}' 'logs') | Out-Null
+        & '{{ nssm }}' install {{ svc }} (Join-Path '{{ base }}' 'acevo-server-manager.exe') | Out-Null
+        & '{{ nssm }}' set {{ svc }} AppDirectory '{{ base }}' | Out-Null
+        & '{{ nssm }}' set {{ svc }} Start SERVICE_AUTO_START | Out-Null
+        & '{{ nssm }}' set {{ svc }} AppExit Default Restart | Out-Null
+        & '{{ nssm }}' set {{ svc }} AppStdout (Join-Path '{{ base }}' 'logs\service-out.log') | Out-Null
+        & '{{ nssm }}' set {{ svc }} AppStderr (Join-Path '{{ base }}' 'logs\service-err.log') | Out-Null
+        & '{{ nssm }}' set {{ svc }} DisplayName 'AC EVO Server Manager' | Out-Null
+        & '{{ nssm }}' set {{ svc }} Description 'Assetto Corsa EVO Server Manager (acevo.mondaynightracing.co.za)' | Out-Null
+        & '{{ nssm }}' set {{ svc }} ObjectName '{{ svc_user }}' '{{ svc_password }}' | Out-Null
+      no_log: true
+
+    - name: Start the service
+      ansible.windows.win_service:
+        name: "{{ svc }}"
+        state: started
+        start_mode: auto
+
+    - name: Wait for the manager to bind its port
+      ansible.windows.win_wait_for:
+        host: 127.0.0.1
+        port: "{{ acevo_port }}"
+        state: started
+        timeout: 60
+
+    - name: Verify
+      ansible.windows.win_shell: |
+        $s = Get-Service {{ svc }}
+        "service: $($s.Status) / $($s.StartType)"
+        try {
+          $h = Invoke-RestMethod "http://127.0.0.1:{{ acevo_port }}/healthcheck.json" -TimeoutSec 10
+          "healthcheck: OK=$($h.OK) Version=$($h.Version) Game=$($h.Game)"
+        } catch { "healthcheck ERROR: $($_.Exception.Message)" }
+      register: verify
+      changed_when: false
+
+    - ansible.builtin.debug:
+        var: verify.stdout_lines

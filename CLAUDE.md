@@ -20,15 +20,20 @@ docs/
   mnr-server.md                  host, Apache vhost map, certs, gotchas
   acevo-server.md                AC EVO race server: layout, launch, Steam update procedure
   acc-server-manager.md          ACC Server Manager (acc.mondaynightracing.co.za): store, championship model
-  acevo-server-manager.md        AC EVO Server Manager (acevo.mondaynightracing.co.za): bare process on :8774
+  acevo-server-manager.md        AC EVO Server Manager (acevo.mondaynightracing.co.za): NSSM service on :8774
+  server-manager-api.md          ACC + AC EVO manager Web API: endpoints, auth, rate-limit traps
   website-c-website.md           dev.rablab.co.za DocumentRoot inventory
   website-c-mnr_website.md       mondaynightracing.co.za DocumentRoot inventory (source now in site/)
   dns-cloudflare-migration.md    mnr.co.za DNS migration state and procedure
+  disk-reclaim-2026-08-18.md     what was freed on C:, what must never be deleted
+reference/
+  acevo-config/    snapshot of the league-tuned AC EVO cars.json / events_*.json
 scripts/
   posh-acme-setup.ps1            one-time cert issuance + deploy (run as SYSTEM, takes -CFToken)
   posh-acme-renew.ps1            daily renewal on server (deployed at C:\certs\_acme\renew.ps1)
   acevo-decode-launch.py         decode AC EVO -serverconfig/-seasondefinition blobs to JSON
   acc-championship/              generate ACC championship+preset JSON from a season.yml (gen.py)
+  osm-api.sh                     query the ACC/EVO manager Web API (handles login from the vault)
 vpn/
   mnr-jh1.ovpn     OpenVPN config (CA inlined) for the JH1 tunnel
 ```
@@ -81,9 +86,11 @@ Emperor Servers **"One Server Manager" v1.6.3** at `C:\Users\MNR\Desktop\mnr\ACE
 Same JSON-store design as the ACC manager (`store.json\`, one file per object), but its own install — it
 carries its own `AssettoCorsaEVOServer.exe` + `content.kspkg`, separate from `ACEvo_Latest`.
 
-**It is a bare hand-started process — no service, no scheduled task.** `Get-Process acevo-server-manager` is
-the up-check; a reboot takes the site offline until someone starts it. Wrapping it in NSSM (as
-`acc-server-manager` was in July) is the obvious follow-up.
+Runs as the NSSM service **`acevo-server-manager`** (Auto start, crash-restart, as `.\MNR`) — set up
+2026-08-18 via `ansible/deploy-acevo-manager-service.yml`; before that it was a bare hand-started process that
+did not survive a reboot. `Get-Service acevo-server-manager` is the up-check;
+`Restart-Service acevo-server-manager` works over WinRM. The playbook refuses to run while an event is in
+progress (it stops the manager and its game servers) — override with `-e force_stop=true`.
 
 `ams2.mondaynightracing.co.za` proxies the **same** port 8774, so it now serves AC EVO too. AMS2 itself is no
 longer running on the box. `acevo.` is the canonical name; `ams2.` is left working for old bookmarks. Detail
@@ -122,7 +129,8 @@ For bulk file pushes, `win_copy` in a **playbook** handles chunking for you and 
 - `httpd-ssl.conf` is intentionally empty; SSL globals are configured per-vhost.
 - `C:\Certbot\csr\` and `keys\` have ~120 leftover files from a broken 2021 auto-renew loop. Harmless but visually noisy.
 - The `mnr` account works over WinRM only because `LocalAccountTokenFilterPolicy=1` is set in the registry. If someone wipes that key, remote auth starts failing with `InvalidCredentialsError` despite correct creds.
-- **`C:` is tight on space** — **2.23 GB free as of 2026-08-18** (was 4.4 GB on 2026-07-13; the `ACEvoManager` install ate most of the difference — it carries a second ~260 MB `content.kspkg`). `ACEvo_Latest\content.kspkg` alone is ~260 MB, and backups of it are the same again. Clear stale `.bak-*` files and old `Backup_*\` folders once a build is confirmed good, and check free space before pushing anything large.
+- **`C:` space** — was down to 2.23 GB free; **~11.4 GB free after the 2026-08-18 cleanup** (see `docs/disk-reclaim-2026-08-18.md`). Still check free space before pushing anything large, and clear stale `.bak-*` / `Backup_*\` folders once a build is confirmed good.
+- **Do not delete `C:\feedback`.** It looks like an abandoned 2025 ASP.NET app and there is a *stopped* IIS site pointing at it, but `C:\feedback\WebApi.exe` is **live on port 8080** as a standalone process. It came within one command of being deleted during the 2026-08-18 disk cleanup.
 - Don't overwrite the AC EVO `cars.json` / `events_practice.json` / `events_race_weekend.json` from a Steam copy — they differ from stock and look league-tuned.
 
 ## Palace deployment (palace.mondaynightracing.co.za)
@@ -171,3 +179,17 @@ not a server/deploy issue.
 gitignored `ansible/.vault_password`, per the existing convention — never in a committed file). Only the
 WinRM creds were recovered; `vault_vpn_*` and `vault_cloudflare_api_token` are `REPLACE_ME_*` placeholders — refill before
 any VPN-bring-up or Cloudflare DNS automation).
+
+## Server Manager Web API
+
+Both managers (ACC v1.6.2, AC EVO v1.6.3 — same Emperor product) expose a small **read-only** JSON API:
+`/healthcheck.json` (public), `/api/championship/list.json`, `/api/championship/{id}/standings.json`,
+`/api/results/list.json`, `/server/{id}/result/download/{name}.json`. No write/control API exists — config
+changes still mean editing the JSON store and restarting.
+
+Use `scripts/osm-api.sh <acc|acevo> <endpoint>`; it logs in with `vault_osm_admin_password` (same `admin`
+account on both) and caches the cookie. **Two traps:** exceeding the 5-requests-per-20-seconds limit returns
+`302 → /login`, not `429`, so it looks exactly like a broken session; and the vendor's documented search
+syntax `q=%2Bspa` returns HTTP 500 (plain `q=monza` works). Also note **ACC has Public Access enabled and EVO
+does not** — ACC's championship and results endpoints are readable with no credentials at all. Full detail in
+`docs/server-manager-api.md`.
