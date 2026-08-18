@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MNR | Monday Night Racing</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .bg-mzansi {
+            background-color: #050505;
+            background-image: 
+                linear-gradient(135deg, rgba(0, 124, 54, 0.08) 0%, transparent 40%),
+                linear-gradient(225deg, rgba(255, 182, 18, 0.08) 0%, transparent 40%),
+                radial-gradient(circle at 50% 50%, #111 0%, #000 100%);
+        }
+        .glass {
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            overflow: hidden;
+        }
+        .accent-green { border-bottom: 4px solid #007c36; }
+        .accent-gold { border-bottom: 4px solid #ffb612; }
+        .btn-discord {
+            background: linear-gradient(90deg, #5865F2 0%, #4752c4 100%);
+            transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        .stripes {
+            background-image: repeating-linear-gradient(45deg, rgba(255,255,255,0.02) 0px, rgba(255,255,255,0.02) 1px, transparent 1px, transparent 10px);
+        }
+        .card-bg {
+            transition: transform 0.7s ease, opacity 0.5s ease;
+            opacity: 0.3;
+        }
+        .group:hover .card-bg {
+            transform: scale(1.1);
+            opacity: 0.5;
+        }
+    </style>
+</head>
+<body class="bg-mzansi text-white min-h-screen flex flex-col items-center justify-center p-6 stripes">
+
+    <header class="text-center mb-10 relative z-10">
+        <div class="inline-flex items-center gap-2 px-4 py-1 mb-6 text-xs font-bold tracking-[0.2em] text-yellow-500 uppercase bg-yellow-500/10 rounded-full border border-yellow-500/20">
+            <i data-lucide="flag" class="w-3 h-3"></i> South African Sim Racing Community
+        </div>
+        
+        <img src="image.png" alt="MNR Logo" class="w-64 h-auto mx-auto mb-6 drop-shadow-2xl">
+
+        <div class="inline-flex items-center gap-2 px-6 py-2 bg-yellow-500 text-black rounded-lg font-black italic transform -skew-x-12 shadow-lg">
+            <i data-lucide="calendar" class="w-4 h-4 transform skew-x-12"></i>
+            <span class="transform skew-x-12">EVERY MONDAY @ 18:00 SAST</span>
+        </div>
+    </header>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-5xl relative z-10">
+        <a href="https://acc.mondaynightracing.co.za" class="group relative glass accent-green p-10 rounded-3xl transition-all duration-300 flex flex-col items-center text-center hover:-translate-y-2">
+            <div class="absolute inset-0 z-0 card-bg bg-cover bg-center" style="background-image: url('https://images.unsplash.com/photo-1541139363941-7650f96894c2?auto=format&fit=crop&q=80&w=1200');"></div>
+            <div class="relative z-10">
+                <div class="w-14 h-14 mx-auto mb-4 rounded-xl bg-green-600/20 flex items-center justify-center border border-green-600/30">
+                    <i data-lucide="timer" class="text-green-500 w-7 h-7"></i>
+                </div>
+                <h2 class="text-2xl font-bold">Assetto Corsa</h2>
+                <h3 class="text-base font-black text-green-500 uppercase tracking-widest mb-6">Competizione</h3>
+                <div class="inline-block text-xs py-2 px-6 rounded-md bg-green-600 text-white font-bold uppercase tracking-tighter group-hover:bg-white group-hover:text-green-700 transition-all shadow-lg">
+                    Enter Paddock
+                </div>
+            </div>
+        </a>
+
+        <a href="https://acevo.mondaynightracing.co.za" class="group relative glass accent-gold p-10 rounded-3xl transition-all duration-300 flex flex-col items-center text-center hover:-translate-y-2">
+            <div class="absolute inset-0 z-0 card-bg bg-cover bg-center" style="background-image: url('https://images.unsplash.com/photo-1594739394157-995a973d439a?auto=format&fit=crop&q=80&w=1200');"></div>
+            <div class="relative z-10">
+                <div class="w-14 h-14 mx-auto mb-4 rounded-xl bg-yellow-500/20 flex items-center justify-center border border-yellow-500/30">
+                    <i data-lucide="gauge" class="text-yellow-500 w-7 h-7"></i>
+                </div>
+                <h2 class="text-2xl font-bold">Assetto Corsa</h2>
+                <h3 class="text-base font-black text-yellow-500 uppercase tracking-widest mb-6">EVO</h3> 
+                <div class="inline-block text-xs py-2 px-6 rounded-md bg-yellow-500 text-black font-bold uppercase tracking-tighter group-hover:bg-white group-hover:text-yellow-700 transition-all shadow-lg">
+                    Enter Paddock
+                </div>
+            </div>
+        </a>
+    </div>
+
+    <div class="mt-12 text-center relative z-10 w-full flex flex-col items-center">
+        <p class="text-gray-300 italic mb-6 font-medium tracking-wide">
+            Have fun, race fair, and see you on track!
+        </p>
+        
+        <a href="https://discord.gg/E8dR97ffFy" 
+           target="_blank" 
+           id="discord-join-btn"
+           class="btn-discord flex items-center justify-center gap-3 text-white px-10 py-4 rounded-xl font-bold shadow-xl shadow-blue-500/20 hover:scale-105 active:scale-95 w-fit">
+            <i data-lucide="message-square" class="w-5 h-5"></i>
+            <span>Join the Discord</span>
+        </a>
+    </div>
+
+    <footer class="mt-auto pt-12 pb-6 flex flex-col items-center gap-2">
+        <div class="flex gap-4 opacity-30">
+            <div class="w-8 h-1 bg-white"></div>
+            <div class="w-8 h-1 bg-red-600"></div>
+            <div class="w-8 h-1 bg-green-600"></div>
+            <div class="w-8 h-1 bg-blue-700"></div>
+        </div>
+        <p class="text-[10px] text-gray-600 tracking-[0.4em] uppercase font-bold">
+            &copy; 2026 Monday Night Racing &bull; South Africa
+        </p>
+    </footer>
+
+    <script>
+      lucide.createIcons();
+
+      // Tracker Logic
+      // 1. Track Visit on Load
+      fetch('tracker.php?action=visit');
+
+      // 2. Track Click on Button
+      document.getElementById('discord-join-btn').addEventListener('click', function() {
+          fetch('tracker.php?action=click');
+      });
+    </script>
+</body>
+</html>

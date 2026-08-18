@@ -1,0 +1,136 @@
+---
+# Deploy the mondaynightracing.co.za landing page (C:\mnr_website) and the
+# acevo.mondaynightracing.co.za vhost to mnr-race.
+#
+# The site source of truth is site/mnr_website/ in this repo. Before this playbook
+# existed the only copy was the live server, so treat the repo as canonical from now
+# on — a hand-edit on the box will be overwritten by the next `site` run.
+#
+# Tags:
+#   site     copy the static files. Non-disruptive (Apache serves them from disk).
+#   apache   render the acevo vhost + Include line, then `httpd -t`. Writes config
+#            but does NOT touch the running server, so it is safe any time.
+#   restart  graceful restart of the SINGLE shared httpd.exe. DISRUPTIVE — briefly
+#            blips every vhost (acc / ams2 / timing / mnr / palace / manager).
+#            Run OFF-PEAK. Only needed after `apache` changes something.
+#
+# Usage:
+#   ansible-playbook deploy-mnr-website.yml --tags site
+#   ansible-playbook deploy-mnr-website.yml --tags apache
+#   ansible-playbook deploy-mnr-website.yml --tags restart     # off-peak only
+- name: Deploy the MNR landing page and the AC EVO manager vhost
+  hosts: windows
+  gather_facts: false
+  vars:
+    # Control-node source (override with -e if this repo lives elsewhere):
+    site_src: "{{ playbook_dir }}/../site/mnr_website/"
+    site_root: 'C:\mnr_website'
+    apache_conf: 'C:\Apache24\conf\httpd.conf'
+    apache_bin: 'C:\Apache24\bin\httpd.exe'
+    acevo_cert: 'C:/certs/mondaynightracing.co.za/fullchain.pem'
+    acevo_key: 'C:/certs/mondaynightracing.co.za/privkey.pem'
+    # The AC EVO Server Manager binds this. It is a bare process (no service) started
+    # by hand from C:\Users\MNR\Desktop\mnr\ACEvoManager\acevo-server-manager.exe —
+    # if it is not running, the vhost proxies to nothing.
+    acevo_backend_host: '10.104.0.10'
+    acevo_backend_port: 8774
+
+  tasks:
+    # --- Static site --------------------------------------------------------
+    # Directory copy, not a mirror: win_copy adds/overwrites but never deletes.
+    # That is deliberate — stats.txt is runtime state written by tracker.php and
+    # must survive a deploy, so it is not in the repo and must not be removed.
+    - name: Copy the landing page files
+      tags: [site]
+      ansible.windows.win_copy:
+        src: "{{ site_src }}"
+        dest: "{{ site_root }}\\"
+
+    - name: Confirm the tracker's counter file was left alone
+      tags: [site]
+      ansible.windows.win_stat:
+        path: "{{ site_root }}\\stats.txt"
+      register: stats_file
+      changed_when: false
+
+    - name: Warn if stats.txt is missing
+      tags: [site]
+      ansible.builtin.debug:
+        msg: >-
+          stats.txt is absent from {{ site_root }} — tracker.php will recreate it
+          from zero on the next hit. Expected only on a fresh box.
+      when: not stats_file.stat.exists
+
+    # --- Apache vhost (writes config, does not touch the running server) -----
+    - name: Check the AC EVO manager is actually listening
+      tags: [apache]
+      ansible.windows.win_shell: >-
+        (Test-NetConnection -ComputerName {{ acevo_backend_host }}
+        -Port {{ acevo_backend_port }} -WarningAction SilentlyContinue).TcpTestSucceeded
+      register: acevo_probe
+      changed_when: false
+
+    - name: Warn if nothing is listening on the AC EVO manager port
+      tags: [apache]
+      ansible.builtin.debug:
+        msg: >-
+          Nothing is listening on {{ acevo_backend_host }}:{{ acevo_backend_port }}.
+          The vhost will still deploy, but acevo.mondaynightracing.co.za will 503
+          until acevo-server-manager.exe is started by hand on the server.
+      when: acevo_probe.stdout is not search('True')
+
+    - name: Deploy the acevo vhost include file
+      tags: [apache]
+      ansible.windows.win_template:
+        src: templates/httpd-acevo.conf.j2
+        dest: 'C:\Apache24\conf\extra\httpd-acevo.conf'
+      register: vhost_file
+
+    - name: Ensure httpd.conf includes the acevo vhost
+      tags: [apache]
+      community.windows.win_lineinfile:
+        path: "{{ apache_conf }}"
+        line: 'Include conf/extra/httpd-acevo.conf'
+        insertafter: EOF
+        state: present
+      register: include_line
+
+    # Gate the restart on a clean parse so a bad vhost can never take the site down.
+    - name: Validate Apache config
+      tags: [apache]
+      ansible.windows.win_command: '"{{ apache_bin }}" -t'
+      register: httpd_t
+      changed_when: false
+      failed_when: httpd_t.rc != 0
+
+    - name: Report whether a restart is needed
+      tags: [apache]
+      ansible.builtin.debug:
+        msg: >-
+          {% if vhost_file.changed or include_line.changed %}
+          Apache config changed and parses clean. Run `--tags restart` OFF-PEAK to
+          load it.
+          {% else %}
+          Apache config already current — no restart needed.
+          {% endif %}
+
+    # --- Disruptive: shared httpd restart ------------------------------------
+    - name: Re-validate Apache config before restarting
+      tags: [restart]
+      ansible.windows.win_command: '"{{ apache_bin }}" -t'
+      register: httpd_t_pre
+      changed_when: false
+      failed_when: httpd_t_pre.rc != 0
+
+    - name: Graceful Apache restart (blips every vhost on this box)
+      tags: [restart]
+      ansible.windows.win_command: '"{{ apache_bin }}" -k restart -n Apache2.4'
+      changed_when: true
+
+    - name: Wait for Apache to come back
+      tags: [restart]
+      ansible.windows.win_wait_for:
+        host: 127.0.0.1
+        port: 443
+        state: started
+        timeout: 30

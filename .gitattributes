@@ -1,0 +1,3 @@
+# The live site on mnr-race has CRLF line endings. Store these byte-exact so a
+# checkout->deploy round-trip never rewrites the files Apache serves.
+site/mnr_website/* -text

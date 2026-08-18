@@ -12,14 +12,17 @@ ansible/           Ansible control root (run commands from here)
     vars.yml       public vars (server paths, site list, VPN info, CF zone/account IDs)
     vault.yml      ansible-vault encrypted secrets (winrm, VPN, CF API token)
   .vault_password  random password for the vault (gitignored)
+site/
+  mnr_website/     landing page source of truth (deployed to C:\mnr_website)
 dns/
   mondaynightracing.co.za.zone   cleaned BIND export for the CF import
 docs/
   mnr-server.md                  host, Apache vhost map, certs, gotchas
   acevo-server.md                AC EVO race server: layout, launch, Steam update procedure
   acc-server-manager.md          ACC Server Manager (acc.mondaynightracing.co.za): store, championship model
+  acevo-server-manager.md        AC EVO Server Manager (acevo.mondaynightracing.co.za): bare process on :8774
   website-c-website.md           dev.rablab.co.za DocumentRoot inventory
-  website-c-mnr_website.md       mondaynightracing.co.za DocumentRoot inventory
+  website-c-mnr_website.md       mondaynightracing.co.za DocumentRoot inventory (source now in site/)
   dns-cloudflare-migration.md    mnr.co.za DNS migration state and procedure
 scripts/
   posh-acme-setup.ps1            one-time cert issuance + deploy (run as SYSTEM, takes -CFToken)
@@ -71,6 +74,36 @@ Its config is not in a file: the launcher passes the whole thing as base64+zlib 
 
 Updates come from a Steam **Assetto Corsa EVO Dedicated Server** install on a workstation, pushed up over WinRM. Stop the launcher first (it locks its own exe/dll), hash-compare both sides, copy only what differs, and verify by hash afterwards. `cars.json` and `events_*.json` are league-tuned — don't overwrite them with Steam stock. Full procedure in `docs/acevo-server.md`.
 
+## AC EVO Server Manager (acevo.mondaynightracing.co.za)
+
+Emperor Servers **"One Server Manager" v1.6.3** at `C:\Users\MNR\Desktop\mnr\ACEvoManager`, bound to
+`0.0.0.0:8774` and reverse-proxied by Apache. Installed 2026-08-09; linked from the landing page 2026-08-18.
+Same JSON-store design as the ACC manager (`store.json\`, one file per object), but its own install — it
+carries its own `AssettoCorsaEVOServer.exe` + `content.kspkg`, separate from `ACEvo_Latest`.
+
+**It is a bare hand-started process — no service, no scheduled task.** `Get-Process acevo-server-manager` is
+the up-check; a reboot takes the site offline until someone starts it. Wrapping it in NSSM (as
+`acc-server-manager` was in July) is the obvious follow-up.
+
+`ams2.mondaynightracing.co.za` proxies the **same** port 8774, so it now serves AC EVO too. AMS2 itself is no
+longer running on the box. `acevo.` is the canonical name; `ams2.` is left working for old bookmarks. Detail
+in `docs/acevo-server-manager.md`.
+
+## Landing page (mondaynightracing.co.za)
+
+Source of truth is **`site/mnr_website/`** in this repo (snapshotted off the live server 2026-08-18 — before
+that the server was the only copy). DocumentRoot `C:\mnr_website`. Deploy from `ansible/`:
+
+```bash
+ansible-playbook deploy-mnr-website.yml --tags site      # static files. non-disruptive
+ansible-playbook deploy-mnr-website.yml --tags apache    # renders the acevo vhost + httpd -t. no restart
+ansible-playbook deploy-mnr-website.yml --tags restart   # DISRUPTIVE shared-httpd restart. off-peak only
+```
+
+Edit in the repo, never on the box — the next `site` run overwrites hand-edits. `stats.txt` (tracker.php's
+counter) is runtime state: deliberately not in the repo, and the playbook copies without deleting so it
+survives. `index.html` is CRLF; `.gitattributes` marks the dir `-text` to keep it byte-exact.
+
 ## ACC Server Manager (acc.mondaynightracing.co.za)
 
 Separate from AC EVO: this is the **Assetto Corsa Competizione** platform — Emperor Servers' "ACC Server Manager" v1.4.6, a Go web app at `C:\Users\MNR\Desktop\mnr\Official Race Servers\Race` on `mnr-race`, bound to `:8773` and reverse-proxied by Apache (`acc.mondaynightracing.co.za`). Runs as the NSSM service **`acc-server-manager`** (Auto start, crash-restart, as `MNR-RACE\MNR`) — set up 2026-07-26; `Restart-Service acc-server-manager` over WinRM now, no RDP needed. It supervises up to three `accServer.exe` instances (A/B/C, GT3). `Get-Service acc-server-manager` / `Get-Process accServer` are the up-checks.
@@ -85,11 +118,11 @@ For bulk file pushes, `win_copy` in a **playbook** handles chunking for you and 
 
 ## Things to be careful about
 
-- **Do not touch `C:\Apache24\conf\api.conf` or `extra\httpd-mnr.conf`** on the server — they are orphaned (not included by `httpd.conf`) but editing them gives a false sense of effect. Live vhosts are only in `extra\httpd-vhosts.conf`.
+- **Do not touch `C:\Apache24\conf\api.conf` or `extra\httpd-mnr.conf`** on the server — they are orphaned (not included by `httpd.conf`) but editing them gives a false sense of effect. Live vhosts are in `extra\httpd-vhosts.conf` **plus** the per-app files `Include`d at the end of `httpd.conf` (`httpd-palace.conf`, `httpd-manager.conf`, `httpd-acevo.conf`) — those three are rendered from templates, so edit the template and redeploy, never the server copy.
 - `httpd-ssl.conf` is intentionally empty; SSL globals are configured per-vhost.
 - `C:\Certbot\csr\` and `keys\` have ~120 leftover files from a broken 2021 auto-renew loop. Harmless but visually noisy.
 - The `mnr` account works over WinRM only because `LocalAccountTokenFilterPolicy=1` is set in the registry. If someone wipes that key, remote auth starts failing with `InvalidCredentialsError` despite correct creds.
-- **`C:` is tight on space** — 4.4 GB free as of 2026-07-13. `ACEvo_Latest\content.kspkg` alone is ~260 MB, and backups of it are the same again. Clear stale `.bak-*` files and old `Backup_*\` folders once a build is confirmed good, and check free space before pushing anything large.
+- **`C:` is tight on space** — **2.23 GB free as of 2026-08-18** (was 4.4 GB on 2026-07-13; the `ACEvoManager` install ate most of the difference — it carries a second ~260 MB `content.kspkg`). `ACEvo_Latest\content.kspkg` alone is ~260 MB, and backups of it are the same again. Clear stale `.bak-*` files and old `Backup_*\` folders once a build is confirmed good, and check free space before pushing anything large.
 - Don't overwrite the AC EVO `cars.json` / `events_practice.json` / `events_race_weekend.json` from a Steam copy — they differ from stock and look league-tuned.
 
 ## Palace deployment (palace.mondaynightracing.co.za)
